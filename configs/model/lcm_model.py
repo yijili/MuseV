@@ -2,7 +2,8 @@ import os
 
 
 LCMDir = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), "../../checkpoints", "lcm"
+    # os.path.dirname(os.path.abspath(__file__)), "../../checkpoints", "lcm"
+    "/workplace/musev/MuseV/", "checkpoints", "lcm"
 )
 
 
