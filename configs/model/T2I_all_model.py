@@ -2,7 +2,8 @@ import os
 
 
 T2IDir = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), "../../checkpoints", "t2i"
+    # os.path.dirname(os.path.abspath(__file__)), "../../checkpoints", "t2i"
+    "/workplace/musev/MuseV/", "checkpoints", "t2i"
 )
 
 MODEL_CFG = {
