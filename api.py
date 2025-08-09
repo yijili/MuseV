@@ -68,18 +68,6 @@ logger.setLevel(logging.INFO)
 device = None
 weight_dtype = torch.float16
 
-# 延迟加载模型，避免在模块导入时加载
-sd_predictor = None
-referencenet = None
-vision_clip_extractor = None
-ip_adapter_image_proj = None
-face_emb_extractor = None
-facein_image_proj = None
-ip_adapter_face_emb_extractor = None
-ip_adapter_face_image_proj = None
-pose_guider = None
-unet = None
-
 # 从 MuseV 中导入必要的函数和模块
 try:
     from musev.pipelines.pipeline_controlnet_predictor import DiffusersPipelinePredictor
@@ -176,7 +164,7 @@ def load_models():
     
     if not modules_available:
         logger.error("必要的模块未正确导入，无法加载模型")
-        return
+        return False
     
     # 使用 GPU 设备
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -225,7 +213,6 @@ def load_models():
         "interpolation_factor": 1,
         "ip_adapter_face_model_cfg_path": os.path.join(PROJECT_DIR, "configs/model/ip_adapter.py"),
         "ip_adapter_face_model_name": None,
-        "ip_adapter_face_scale": 1.0,
         "ip_adapter_model_cfg_path": os.path.join(PROJECT_DIR, "configs/model/ip_adapter.py"),
         "ip_adapter_model_name": "musev_referencenet",
         "ip_adapter_scale": 1.0,
@@ -319,19 +306,19 @@ def load_models():
     # 检查配置文件是否存在
     if not os.path.exists(sd_model_cfg_path):
         logger.error(f"SD模型配置文件不存在: {sd_model_cfg_path}")
-        return
+        return False
     
     if not os.path.exists(unet_model_cfg_path):
         logger.error(f"UNet模型配置文件不存在: {unet_model_cfg_path}")
-        return
+        return False
     
     if not os.path.exists(referencenet_model_cfg_path):
         logger.error(f"ReferenceNet模型配置文件不存在: {referencenet_model_cfg_path}")
-        return
+        return False
     
     if not os.path.exists(ip_adapter_model_cfg_path):
         logger.error(f"IP-Adapter模型配置文件不存在: {ip_adapter_model_cfg_path}")
-        return
+        return False
     
     # 加载 SD 模型参数
     try:
@@ -353,7 +340,7 @@ def load_models():
         logger.info(str(sd_model_params_dict))
     except Exception as e:
         logger.error(f"加载SD模型参数失败: {e}")
-        return
+        return False
     
     # 加载 LCM 模型
     lcm_model_name = args.lcm_model_name
@@ -381,7 +368,7 @@ def load_models():
         logger.info(f"unet: {unet_model_name}, {unet_model_path}")
     except Exception as e:
         logger.error(f"加载UNet模型路径失败: {e}")
-        return
+        return False
     
     # 加载 referencenet
     referencenet_model_path = None
@@ -655,24 +642,21 @@ def load_models():
     
     if not model_loaded:
         logger.error("未能成功加载任何模型")
-        return
+        return False
     
     logger.info("模型加载完成")
     if torch.cuda.is_available():
         logger.info(f"GPU内存状态: 已分配 {torch.cuda.memory_allocated()/1024**2:.1f} MB, 已缓存 {torch.cuda.memory_reserved()/1024**2:.1f} MB")
+    
+    return True
 
 # 注册退出处理函数
 atexit.register(cleanup_models)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # 启动时的初始化代码
-    try:
-        load_models()
-    except Exception as e:
-        logger.error(f"模型加载失败: {str(e)}")
-        # 不抛出异常，允许服务启动但标记模型未加载
-        pass
+    # 启动时不加载模型
+    logger.info("服务启动，模型将在需要时加载")
     yield
     # 关闭时的清理代码
     logger.info("正在关闭应用...")
@@ -808,13 +792,14 @@ def text_to_video_api(
     try:
         logger.info(f"开始执行 text_to_video，任务ID: {task_id}，图像路径: {image_path}")
         
-        # 确保模型已加载
-        if sd_predictor is None:
-            raise HTTPException(status_code=500, detail="模型未加载")
+        # 加载模型
+        if not load_models():
+            raise HTTPException(status_code=500, detail="模型加载失败")
         
         # 检查任务是否已取消
         if check_task_cancelled(task_id):
             logger.info(f"任务 {task_id} 已被取消")
+            cleanup_models()  # 释放模型
             return {"message": "任务已被取消"}
         
         # 设置参数
@@ -833,6 +818,7 @@ def text_to_video_api(
             image_np = np.array(image)
         except Exception as e:
             logger.error(f"读取图像失败: {e}")
+            cleanup_models()  # 释放模型
             raise HTTPException(status_code=500, detail=f"读取图像失败: {e}")
         
         # 限制形状
@@ -842,6 +828,7 @@ def text_to_video_api(
             )
         except Exception as e:
             logger.error(f"限制图像形状失败: {e}")
+            cleanup_models()  # 释放模型
             raise HTTPException(status_code=500, detail=f"限制图像形状失败: {e}")
         
         if out_w != -1 and out_h != -1:
@@ -928,6 +915,7 @@ def text_to_video_api(
         # 检查任务是否已取消
         if check_task_cancelled(task_id):
             logger.info(f"任务 {task_id} 已被取消")
+            cleanup_models()  # 释放模型
             return {"message": "任务已被取消"}
         
         # 更新任务状态
@@ -953,6 +941,7 @@ def text_to_video_api(
         # 检查任务是否已取消
         if check_task_cancelled(task_id):
             logger.info(f"任务 {task_id} 已被取消")
+            cleanup_models()  # 释放模型
             return {"message": "任务已被取消"}
         
         # 实际调用模型进行推理
@@ -1018,6 +1007,7 @@ def text_to_video_api(
             )
         except Exception as e:
             logger.error(f"模型推理失败: {e}")
+            cleanup_models()  # 释放模型
             raise HTTPException(status_code=500, detail=f"模型推理失败: {e}")
         
         # 更新任务状态
@@ -1043,6 +1033,7 @@ def text_to_video_api(
             )
         except Exception as e:
             logger.error(f"保存视频失败: {e}")
+            cleanup_models()  # 释放模型
             raise HTTPException(status_code=500, detail=f"保存视频失败: {e}")
         
         # 检查任务是否已取消
@@ -1050,6 +1041,7 @@ def text_to_video_api(
             logger.info(f"任务 {task_id} 已被取消")
             if os.path.exists(output_video_path):
                 os.remove(output_video_path)
+            cleanup_models()  # 释放模型
             return {"message": "任务已被取消"}
         
         # 更新任务状态
@@ -1063,12 +1055,17 @@ def text_to_video_api(
                 }
         
         logger.info(f"视频已保存到: {output_video_path}")
+        
+        # 释放模型
+        cleanup_models()
+        
         return {
             "video_path": os.path.abspath(output_video_path)
         }
         
     except HTTPException:
         # 重新抛出HTTP异常
+        cleanup_models()  # 释放模型
         raise
     except Exception as e:
         # 更新任务状态为失败
@@ -1077,6 +1074,7 @@ def text_to_video_api(
                 active_tasks[task_id].status = "failed"
                 active_tasks[task_id].message = f"执行出错: {str(e)}"
         logger.error(f"text_to_video 执行出错: {str(e)}")
+        cleanup_models()  # 释放模型
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         # 强制垃圾回收
@@ -1102,17 +1100,19 @@ def video_to_video_api(
     try:
         logger.info(f"开始执行 video_to_video，任务ID: {task_id}，图像路径: {image_path}，视频路径: {video_path}")
         
-        # 确保模型已加载
-        if sd_predictor is None:
-            raise HTTPException(status_code=500, detail="模型未加载")
+        # 加载模型
+        if not load_models():
+            raise HTTPException(status_code=500, detail="模型加载失败")
         
         # 检查任务是否已取消
         if check_task_cancelled(task_id):
             logger.info(f"任务 {task_id} 已被取消")
+            cleanup_models()  # 释放模型
             return {"message": "任务已被取消"}
         
         # 检查视频文件是否存在
         if not os.path.exists(video_path):
+            cleanup_models()  # 释放模型
             raise HTTPException(status_code=404, detail=f"视频文件不存在: {video_path}")
         
         # 设置参数
@@ -1131,6 +1131,7 @@ def video_to_video_api(
             image_np = np.array(image)
         except Exception as e:
             logger.error(f"读取图像失败: {e}")
+            cleanup_models()  # 释放模型
             raise HTTPException(status_code=500, detail=f"读取图像失败: {e}")
         
         # 限制形状
@@ -1140,6 +1141,7 @@ def video_to_video_api(
             )
         except Exception as e:
             logger.error(f"限制图像形状失败: {e}")
+            cleanup_models()  # 释放模型
             raise HTTPException(status_code=500, detail=f"限制图像形状失败: {e}")
         
         if out_w != -1 and out_h != -1:
@@ -1227,6 +1229,7 @@ def video_to_video_api(
         # 检查任务是否已取消
         if check_task_cancelled(task_id):
             logger.info(f"任务 {task_id} 已被取消")
+            cleanup_models()  # 释放模型
             return {"message": "任务已被取消"}
         
         # 更新任务状态
@@ -1252,6 +1255,7 @@ def video_to_video_api(
         # 检查任务是否已取消
         if check_task_cancelled(task_id):
             logger.info(f"任务 {task_id} 已被取消")
+            cleanup_models()  # 释放模型
             return {"message": "任务已被取消"}
         
         # 实际调用模型进行推理
@@ -1338,6 +1342,7 @@ def video_to_video_api(
             )
         except Exception as e:
             logger.error(f"模型推理失败: {e}")
+            cleanup_models()  # 释放模型
             raise HTTPException(status_code=500, detail=f"模型推理失败: {e}")
         
         # 更新任务状态
@@ -1367,6 +1372,7 @@ def video_to_video_api(
             )
         except Exception as e:
             logger.error(f"保存视频失败: {e}")
+            cleanup_models()  # 释放模型
             raise HTTPException(status_code=500, detail=f"保存视频失败: {e}")
         
         # 检查任务是否已取消
@@ -1374,6 +1380,7 @@ def video_to_video_api(
             logger.info(f"任务 {task_id} 已被取消")
             if os.path.exists(output_video_path):
                 os.remove(output_video_path)
+            cleanup_models()  # 释放模型
             return {"message": "任务已被取消"}
         
         # 更新任务状态
@@ -1387,12 +1394,17 @@ def video_to_video_api(
                 }
         
         logger.info(f"视频已保存到: {output_video_path}")
+        
+        # 释放模型
+        cleanup_models()
+        
         return {
             "video_path": os.path.abspath(output_video_path)
         }
         
     except HTTPException:
         # 重新抛出HTTP异常
+        cleanup_models()  # 释放模型
         raise
     except Exception as e:
         # 更新任务状态为失败
@@ -1401,6 +1413,7 @@ def video_to_video_api(
                 active_tasks[task_id].status = "failed"
                 active_tasks[task_id].message = f"执行出错: {str(e)}"
         logger.error(f"video_to_video 执行出错: {str(e)}")
+        cleanup_models()  # 释放模型
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         # 强制垃圾回收
@@ -1502,11 +1515,6 @@ async def text_to_video_endpoint(request: TextToVideoRequest):
         logger.error(f"图像文件不存在: {request.image_path}")
         raise HTTPException(status_code=404, detail=f"图像文件不存在: {request.image_path}")
     
-    # 检查模型是否已加载
-    if sd_predictor is None:
-        logger.error("模型未加载")
-        raise HTTPException(status_code=503, detail="模型未加载，请稍后重试")
-    
     # 如果请求中包含task_id，则将其添加到active_tasks中
     task_id = request.task_id
     if not task_id:
@@ -1551,11 +1559,6 @@ async def video_to_video_endpoint(request: VideoToVideoRequest):
     if not os.path.exists(request.video_path):
         logger.error(f"视频文件不存在: {request.video_path}")
         raise HTTPException(status_code=404, detail=f"视频文件不存在: {request.video_path}")
-    
-    # 检查模型是否已加载
-    if sd_predictor is None:
-        logger.error("模型未加载")
-        raise HTTPException(status_code=503, detail="模型未加载，请稍后重试")
     
     # 如果请求中包含task_id，则将其添加到active_tasks中
     task_id = request.task_id
@@ -1748,7 +1751,7 @@ if __name__ == "__main__":
         logger.setLevel(logging.DEBUG)
         logger.debug("调试模式已启用")
     
-    logger.info(f"启动 MuseV API 服务，主机: {args.host}，端口: {args.port}")
+    logger.info(f"启动 MuseV API 服务，当前版本1.0.1，主机: {args.host}，端口: {args.port}")
     
     # 不使用 reload 参数，避免重复导入
     uvicorn.run("api:app", host=args.host, port=args.port, reload=False)
