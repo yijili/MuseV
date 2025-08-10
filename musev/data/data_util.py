@@ -598,8 +598,7 @@ def batch_adain_conditioned_tensor(
         )
 
     if ndim == 4 and num_frames is not None:
-        # src = rearrange(tensor, "b c t h w ->(b t) c h w")
-        src = rearrange(src, "b c t h w ->(b t) c h w")
+        src = rearrange(tensor, "b c t h w ->(b t) c h w")
     return src
 
 
