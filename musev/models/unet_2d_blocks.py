@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from typing import Any, Dict, Literal, Optional, Tuple, Union, List
+import logging
 
 import numpy as np
 import torch
@@ -60,7 +61,7 @@ from diffusers.models.unet_2d_blocks import (
 
 from .transformer_2d import Transformer2DModel
 
-
+# 获取日志记录器实例
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
@@ -91,19 +92,58 @@ def get_down_block(
     downsample_type: Optional[str] = None,
     dropout: float = 0.0,
 ):
-    # If attn head dim is not defined, we default it to the number of heads
+    """
+    根据指定的下采样块类型创建并返回相应的下采样块
+    
+    Args:
+        down_block_type (str): 下采样块的类型
+        num_layers (int): 块中层的数量
+        in_channels (int): 输入通道数
+        out_channels (int): 输出通道数
+        temb_channels (int): 时间嵌入通道数
+        add_downsample (bool): 是否添加下采样层
+        resnet_eps (float): ResNet中的epsilon值
+        resnet_act_fn (str): ResNet激活函数类型
+        transformer_layers_per_block (int): 每个Transformer块的层数
+        num_attention_heads (Optional[int]): 注意力头数量
+        resnet_groups (Optional[int]): ResNet组归一化中的组数
+        cross_attention_dim (Optional[int]): 交叉注意力维度
+        downsample_padding (Optional[int]): 下采样填充大小
+        dual_cross_attention (bool): 是否使用双重交叉注意力
+        use_linear_projection (bool): 是否使用线性投影
+        only_cross_attention (bool): 是否仅使用交叉注意力
+        upcast_attention (bool): 是否上转换注意力
+        resnet_time_scale_shift (str): ResNet时间缩放偏移类型
+        attention_type (str): 注意力类型
+        resnet_skip_time_act (bool): ResNet是否跳过时间激活
+        resnet_out_scale_factor (float): ResNet输出缩放因子
+        cross_attention_norm (Optional[str]): 交叉注意力归一化类型
+        attention_head_dim (Optional[int]): 注意力头维度
+        downsample_type (Optional[str]): 下采样类型
+        dropout (float): Dropout概率
+
+    Returns:
+        nn.Module: 对应类型的下采样块实例
+    """
+    # 如果未定义注意力头维度，则默认使用注意力头数量
     if attention_head_dim is None:
         logger.warn(
-            f"It is recommended to provide `attention_head_dim` when calling `get_down_block`. Defaulting `attention_head_dim` to {num_attention_heads}."
+            f"建议在调用 get_down_block 时提供 attention_head_dim 参数。默认将 attention_head_dim 设置为 {num_attention_heads}。"
         )
         attention_head_dim = num_attention_heads
 
+    # 处理块类型前缀
     down_block_type = (
         down_block_type[7:]
         if down_block_type.startswith("UNetRes")
         else down_block_type
     )
+    
+    logger.debug(f"创建下采样块类型: {down_block_type}")
+    
+    # 根据块类型创建相应的下采样块
     if down_block_type == "DownBlock2D":
+        logger.debug("初始化 DownBlock2D 下采样块")
         return DownBlock2D(
             num_layers=num_layers,
             in_channels=in_channels,
@@ -118,6 +158,7 @@ def get_down_block(
             resnet_time_scale_shift=resnet_time_scale_shift,
         )
     elif down_block_type == "ResnetDownsampleBlock2D":
+        logger.debug("初始化 ResnetDownsampleBlock2D 下采样块")
         return ResnetDownsampleBlock2D(
             num_layers=num_layers,
             in_channels=in_channels,
@@ -133,10 +174,11 @@ def get_down_block(
             output_scale_factor=resnet_out_scale_factor,
         )
     elif down_block_type == "AttnDownBlock2D":
+        logger.debug("初始化 AttnDownBlock2D 下采样块")
         if add_downsample is False:
             downsample_type = None
         else:
-            downsample_type = downsample_type or "conv"  # default to 'conv'
+            downsample_type = downsample_type or "conv"  # 默认为 'conv'
         return AttnDownBlock2D(
             num_layers=num_layers,
             in_channels=in_channels,
@@ -152,9 +194,10 @@ def get_down_block(
             downsample_type=downsample_type,
         )
     elif down_block_type == "CrossAttnDownBlock2D":
+        logger.debug("初始化 CrossAttnDownBlock2D 下采样块")
         if cross_attention_dim is None:
             raise ValueError(
-                "cross_attention_dim must be specified for CrossAttnDownBlock2D"
+                "CrossAttnDownBlock2D 必须指定 cross_attention_dim 参数"
             )
         return CrossAttnDownBlock2D(
             num_layers=num_layers,
@@ -178,9 +221,10 @@ def get_down_block(
             attention_type=attention_type,
         )
     elif down_block_type == "SimpleCrossAttnDownBlock2D":
+        logger.debug("初始化 SimpleCrossAttnDownBlock2D 下采样块")
         if cross_attention_dim is None:
             raise ValueError(
-                "cross_attention_dim must be specified for SimpleCrossAttnDownBlock2D"
+                "SimpleCrossAttnDownBlock2D 必须指定 cross_attention_dim 参数"
             )
         return SimpleCrossAttnDownBlock2D(
             num_layers=num_layers,
@@ -201,6 +245,7 @@ def get_down_block(
             cross_attention_norm=cross_attention_norm,
         )
     elif down_block_type == "SkipDownBlock2D":
+        logger.debug("初始化 SkipDownBlock2D 下采样块")
         return SkipDownBlock2D(
             num_layers=num_layers,
             in_channels=in_channels,
@@ -214,6 +259,7 @@ def get_down_block(
             resnet_time_scale_shift=resnet_time_scale_shift,
         )
     elif down_block_type == "AttnSkipDownBlock2D":
+        logger.debug("初始化 AttnSkipDownBlock2D 下采样块")
         return AttnSkipDownBlock2D(
             num_layers=num_layers,
             in_channels=in_channels,
@@ -227,6 +273,7 @@ def get_down_block(
             resnet_time_scale_shift=resnet_time_scale_shift,
         )
     elif down_block_type == "DownEncoderBlock2D":
+        logger.debug("初始化 DownEncoderBlock2D 下采样块")
         return DownEncoderBlock2D(
             num_layers=num_layers,
             in_channels=in_channels,
@@ -240,6 +287,7 @@ def get_down_block(
             resnet_time_scale_shift=resnet_time_scale_shift,
         )
     elif down_block_type == "AttnDownEncoderBlock2D":
+        logger.debug("初始化 AttnDownEncoderBlock2D 下采样块")
         return AttnDownEncoderBlock2D(
             num_layers=num_layers,
             in_channels=in_channels,
@@ -254,6 +302,7 @@ def get_down_block(
             resnet_time_scale_shift=resnet_time_scale_shift,
         )
     elif down_block_type == "KDownBlock2D":
+        logger.debug("初始化 KDownBlock2D 下采样块")
         return KDownBlock2D(
             num_layers=num_layers,
             in_channels=in_channels,
@@ -265,6 +314,7 @@ def get_down_block(
             resnet_act_fn=resnet_act_fn,
         )
     elif down_block_type == "KCrossAttnDownBlock2D":
+        logger.debug("初始化 KCrossAttnDownBlock2D 下采样块")
         return KCrossAttnDownBlock2D(
             num_layers=num_layers,
             in_channels=in_channels,
@@ -278,7 +328,9 @@ def get_down_block(
             attention_head_dim=attention_head_dim,
             add_self_attention=True if not add_downsample else False,
         )
-    raise ValueError(f"{down_block_type} does not exist.")
+    
+    # 如果没有匹配的块类型，则抛出异常
+    raise ValueError(f"下采样块类型 {down_block_type} 不存在。")
 
 
 def get_up_block(
@@ -309,17 +361,57 @@ def get_up_block(
     upsample_type: Optional[str] = None,
     dropout: float = 0.0,
 ) -> nn.Module:
-    # If attn head dim is not defined, we default it to the number of heads
+    """
+    根据指定的上采样块类型创建并返回相应的上采样块
+    
+    Args:
+        up_block_type (str): 上采样块的类型
+        num_layers (int): 块中层的数量
+        in_channels (int): 输入通道数
+        out_channels (int): 输出通道数
+        prev_output_channel (int): 前一个块的输出通道数
+        temb_channels (int): 时间嵌入通道数
+        add_upsample (bool): 是否添加上采样层
+        resnet_eps (float): ResNet中的epsilon值
+        resnet_act_fn (str): ResNet激活函数类型
+        resolution_idx (Optional[int]): 分辨率索引
+        transformer_layers_per_block (int): 每个Transformer块的层数
+        num_attention_heads (Optional[int]): 注意力头数量
+        resnet_groups (Optional[int]): ResNet组归一化中的组数
+        cross_attention_dim (Optional[int]): 交叉注意力维度
+        dual_cross_attention (bool): 是否使用双重交叉注意力
+        use_linear_projection (bool): 是否使用线性投影
+        only_cross_attention (bool): 是否仅使用交叉注意力
+        upcast_attention (bool): 是否上转换注意力
+        resnet_time_scale_shift (str): ResNet时间缩放偏移类型
+        attention_type (str): 注意力类型
+        resnet_skip_time_act (bool): ResNet是否跳过时间激活
+        resnet_out_scale_factor (float): ResNet输出缩放因子
+        cross_attention_norm (Optional[str]): 交叉注意力归一化类型
+        attention_head_dim (Optional[int]): 注意力头维度
+        upsample_type (Optional[str]): 上采样类型
+        dropout (float): Dropout概率
+
+    Returns:
+        nn.Module: 对应类型的上采样块实例
+    """
+    # 如果未定义注意力头维度，则默认使用注意力头数量
     if attention_head_dim is None:
         logger.warn(
-            f"It is recommended to provide `attention_head_dim` when calling `get_up_block`. Defaulting `attention_head_dim` to {num_attention_heads}."
+            f"建议在调用 get_up_block时提供 attention_head_dim 参数。默认将 attention_head_dim 设置为 {num_attention_heads}。"
         )
         attention_head_dim = num_attention_heads
 
+    # 处理块类型前缀
     up_block_type = (
         up_block_type[7:] if up_block_type.startswith("UNetRes") else up_block_type
     )
+    
+    logger.debug(f"创建上采样块类型: {up_block_type}")
+    
+    # 根据块类型创建相应的上采样块
     if up_block_type == "UpBlock2D":
+        logger.debug("初始化 UpBlock2D 上采样块")
         return UpBlock2D(
             num_layers=num_layers,
             in_channels=in_channels,
@@ -335,6 +427,7 @@ def get_up_block(
             resnet_time_scale_shift=resnet_time_scale_shift,
         )
     elif up_block_type == "ResnetUpsampleBlock2D":
+        logger.debug("初始化 ResnetUpsampleBlock2D 上采样块")
         return ResnetUpsampleBlock2D(
             num_layers=num_layers,
             in_channels=in_channels,
@@ -352,9 +445,10 @@ def get_up_block(
             output_scale_factor=resnet_out_scale_factor,
         )
     elif up_block_type == "CrossAttnUpBlock2D":
+        logger.debug("初始化 CrossAttnUpBlock2D 上采样块")
         if cross_attention_dim is None:
             raise ValueError(
-                "cross_attention_dim must be specified for CrossAttnUpBlock2D"
+                "CrossAttnUpBlock2D 必须指定 cross_attention_dim 参数"
             )
         return CrossAttnUpBlock2D(
             num_layers=num_layers,
@@ -379,9 +473,10 @@ def get_up_block(
             attention_type=attention_type,
         )
     elif up_block_type == "SimpleCrossAttnUpBlock2D":
+        logger.debug("初始化 SimpleCrossAttnUpBlock2D 上采样块")
         if cross_attention_dim is None:
             raise ValueError(
-                "cross_attention_dim must be specified for SimpleCrossAttnUpBlock2D"
+                "SimpleCrossAttnUpBlock2D 必须指定 cross_attention_dim 参数"
             )
         return SimpleCrossAttnUpBlock2D(
             num_layers=num_layers,
@@ -404,10 +499,11 @@ def get_up_block(
             cross_attention_norm=cross_attention_norm,
         )
     elif up_block_type == "AttnUpBlock2D":
+        logger.debug("初始化 AttnUpBlock2D 上采样块")
         if add_upsample is False:
             upsample_type = None
         else:
-            upsample_type = upsample_type or "conv"  # default to 'conv'
+            upsample_type = upsample_type or "conv"  # 默认为 'conv'
 
         return AttnUpBlock2D(
             num_layers=num_layers,
@@ -425,6 +521,7 @@ def get_up_block(
             upsample_type=upsample_type,
         )
     elif up_block_type == "SkipUpBlock2D":
+        logger.debug("初始化 SkipUpBlock2D 上采样块")
         return SkipUpBlock2D(
             num_layers=num_layers,
             in_channels=in_channels,
@@ -439,6 +536,7 @@ def get_up_block(
             resnet_time_scale_shift=resnet_time_scale_shift,
         )
     elif up_block_type == "AttnSkipUpBlock2D":
+        logger.debug("初始化 AttnSkipUpBlock2D 上采样块")
         return AttnSkipUpBlock2D(
             num_layers=num_layers,
             in_channels=in_channels,
@@ -454,6 +552,7 @@ def get_up_block(
             resnet_time_scale_shift=resnet_time_scale_shift,
         )
     elif up_block_type == "UpDecoderBlock2D":
+        logger.debug("初始化 UpDecoderBlock2D 上采样块")
         return UpDecoderBlock2D(
             num_layers=num_layers,
             in_channels=in_channels,
@@ -468,6 +567,7 @@ def get_up_block(
             temb_channels=temb_channels,
         )
     elif up_block_type == "AttnUpDecoderBlock2D":
+        logger.debug("初始化 AttnUpDecoderBlock2D 上采样块")
         return AttnUpDecoderBlock2D(
             num_layers=num_layers,
             in_channels=in_channels,
@@ -483,6 +583,7 @@ def get_up_block(
             temb_channels=temb_channels,
         )
     elif up_block_type == "KUpBlock2D":
+        logger.debug("初始化 KUpBlock2D 上采样块")
         return KUpBlock2D(
             num_layers=num_layers,
             in_channels=in_channels,
@@ -495,6 +596,7 @@ def get_up_block(
             resnet_act_fn=resnet_act_fn,
         )
     elif up_block_type == "KCrossAttnUpBlock2D":
+        logger.debug("初始化 KCrossAttnUpBlock2D 上采样块")
         return KCrossAttnUpBlock2D(
             num_layers=num_layers,
             in_channels=in_channels,
@@ -509,37 +611,36 @@ def get_up_block(
             attention_head_dim=attention_head_dim,
         )
 
-    raise ValueError(f"{up_block_type} does not exist.")
+    # 如果没有匹配的块类型，则抛出异常
+    raise ValueError(f"上采样块类型 {up_block_type} 不存在。")
 
 
 class UNetMidBlock2D(nn.Module):
     """
-    A 2D UNet mid-block [`UNetMidBlock2D`] with multiple residual blocks and optional attention blocks.
+    一个2D UNet中间块 UNetMidBlock2D，包含多个残差块和可选的注意力块。
 
     Args:
-        in_channels (`int`): The number of input channels.
-        temb_channels (`int`): The number of temporal embedding channels.
-        dropout (`float`, *optional*, defaults to 0.0): The dropout rate.
-        num_layers (`int`, *optional*, defaults to 1): The number of residual blocks.
-        resnet_eps (`float`, *optional*, 1e-6 ): The epsilon value for the resnet blocks.
-        resnet_time_scale_shift (`str`, *optional*, defaults to `default`):
-            The type of normalization to apply to the time embeddings. This can help to improve the performance of the
-            model on tasks with long-range temporal dependencies.
-        resnet_act_fn (`str`, *optional*, defaults to `swish`): The activation function for the resnet blocks.
-        resnet_groups (`int`, *optional*, defaults to 32):
-            The number of groups to use in the group normalization layers of the resnet blocks.
-        attn_groups (`Optional[int]`, *optional*, defaults to None): The number of groups for the attention blocks.
-        resnet_pre_norm (`bool`, *optional*, defaults to `True`):
-            Whether to use pre-normalization for the resnet blocks.
-        add_attention (`bool`, *optional*, defaults to `True`): Whether to add attention blocks.
-        attention_head_dim (`int`, *optional*, defaults to 1):
-            Dimension of a single attention head. The number of attention heads is determined based on this value and
-            the number of input channels.
-        output_scale_factor (`float`, *optional*, defaults to 1.0): The output scale factor.
+        in_channels (`int`): 输入通道数。
+        temb_channels (`int`): 时间嵌入通道数。
+        dropout (`float`, *optional*, 默认为 0.0): Dropout率。
+        num_layers (`int`, *optional*, 默认为 1): 残差块的数量。
+        resnet_eps (`float`, *optional*, 1e-6 ): ResNet块的epsilon值。
+        resnet_time_scale_shift (`str`, *optional*, 默认为 `default`):
+            应用于时间嵌入的归一化类型。这有助于提高模型在具有长期时间依赖性的任务上的性能。
+        resnet_act_fn (`str`, *optional*, 默认为 `swish`): ResNet块的激活函数。
+        resnet_groups (`int`, *optional*, 默认为 32):
+            ResNet块中组归一化层使用的组数。
+        attn_groups (`Optional[int]`, *optional*, 默认为 None): 注意力块的组数。
+        resnet_pre_norm (`bool`, *optional*, 默认为 `True`):
+            是否在ResNet块中使用预归一化。
+        add_attention (`bool`, *optional*, 默认为 `True`): 是否添加注意力块。
+        attention_head_dim (`int`, *optional*, 默认为 1):
+            单个注意力头的维度。注意力头的数量基于此值和输入通道数确定。
+        output_scale_factor (`float`, *optional*, 默认为 1.0): 输出缩放因子。
 
     Returns:
-        `torch.FloatTensor`: The output of the last residual block, which is a tensor of shape `(batch_size,
-        in_channels, height, width)`.
+        `torch.FloatTensor`: 最后一个残差块的输出，是一个形状为 `(batch_size,
+        in_channels, height, width)` 的张量。
 
     """
 
@@ -559,18 +660,40 @@ class UNetMidBlock2D(nn.Module):
         attention_head_dim: int = 1,
         output_scale_factor: float = 1.0,
     ):
+        """
+        初始化UNet中间块
+        
+        Args:
+            in_channels (int): 输入通道数
+            temb_channels (int): 时间嵌入通道数
+            dropout (float): Dropout概率
+            num_layers (int): 残差块层数
+            resnet_eps (float): ResNet epsilon值
+            resnet_time_scale_shift (str): 时间缩放偏移类型
+            resnet_act_fn (str): ResNet激活函数
+            resnet_groups (int): ResNet组数
+            attn_groups (Optional[int]): 注意力组数
+            resnet_pre_norm (bool): 是否预归一化
+            add_attention (bool): 是否添加注意力
+            attention_head_dim (int): 注意力头维度
+            output_scale_factor (float): 输出缩放因子
+        """
         super().__init__()
+        logger.debug(f"初始化 UNetMidBlock2D，输入通道数: {in_channels}, 时间嵌入通道数: {temb_channels}")
+        
+        # 设置组归一化组数
         resnet_groups = (
             resnet_groups if resnet_groups is not None else min(in_channels // 4, 32)
         )
         self.add_attention = add_attention
 
+        # 设置注意力组数
         if attn_groups is None:
             attn_groups = (
                 resnet_groups if resnet_time_scale_shift == "default" else None
             )
 
-        # there is always at least one resnet
+        # 至少有一个resnet块
         resnets = [
             ResnetBlock2D(
                 in_channels=in_channels,
@@ -587,14 +710,17 @@ class UNetMidBlock2D(nn.Module):
         ]
         attentions = []
 
+        # 如果未指定注意力头维度，则默认使用输入通道数
         if attention_head_dim is None:
             logger.warn(
-                f"It is not recommend to pass `attention_head_dim=None`. Defaulting `attention_head_dim` to `in_channels`: {in_channels}."
+                f"不建议传递 `attention_head_dim=None`。默认将 attention_head_dim 设置为 `in_channels`: {in_channels}。"
             )
             attention_head_dim = in_channels
 
+        # 创建注意力块和残差块
         for _ in range(num_layers):
             if self.add_attention:
+                logger.debug("添加注意力块到 UNetMidBlock2D")
                 attentions.append(
                     Attention(
                         in_channels,
@@ -640,21 +766,47 @@ class UNetMidBlock2D(nn.Module):
         self_attn_block_embs: Optional[List[torch.Tensor]] = None,
         self_attn_block_embs_mode: Literal["read", "write"] = "write",
     ) -> torch.FloatTensor:
+        """
+        前向传播函数
+        
+        Args:
+            hidden_states (torch.FloatTensor): 隐藏状态输入
+            temb (Optional[torch.FloatTensor]): 时间嵌入
+            self_attn_block_embs (Optional[List[torch.Tensor]]): 自注意力块嵌入
+            self_attn_block_embs_mode (Literal["read", "write"]): 自注意力块嵌入模式
+
+        Returns:
+            torch.FloatTensor: 前向传播后的输出张量
+        """
+        logger.debug(f"UNetMidBlock2D 前向传播开始，输入形状: {hidden_states.shape}")
+        
+        # 第一个resnet块
         hidden_states = self.resnets[0](hidden_states, temb)
+        logger.debug(f"经过第一个 ResNet 块后形状: {hidden_states.shape}")
+        
+        # 遍历注意力块和resnet块
         for attn, resnet in zip(self.attentions, self.resnets[1:]):
             if attn is not None:
+                logger.debug("处理注意力块")
                 hidden_states = attn(
                     hidden_states,
                     temb=temb,
                     self_attn_block_embs=self_attn_block_embs,
                     self_attn_block_embs_mode=self_attn_block_embs_mode,
                 )
+                logger.debug(f"经过注意力块后形状: {hidden_states.shape}")
+            logger.debug("处理 ResNet 块")
             hidden_states = resnet(hidden_states, temb)
+            logger.debug(f"经过 ResNet 块后形状: {hidden_states.shape}")
 
+        logger.debug(f"UNetMidBlock2D 前向传播完成，输出形状: {hidden_states.shape}")
         return hidden_states
 
 
 class UNetMidBlock2DCrossAttn(nn.Module):
+    """
+    UNet中间块，包含交叉注意力机制
+    """
     def __init__(
         self,
         in_channels: int,
@@ -675,7 +827,30 @@ class UNetMidBlock2DCrossAttn(nn.Module):
         upcast_attention: bool = False,
         attention_type: str = "default",
     ):
+        """
+        初始化带有交叉注意力的UNet中间块
+        
+        Args:
+            in_channels (int): 输入通道数
+            temb_channels (int): 时间嵌入通道数
+            dropout (float): Dropout概率
+            num_layers (int): 层数
+            transformer_layers_per_block (Union[int, Tuple[int]]): 每个Transformer块的层数
+            resnet_eps (float): ResNet epsilon值
+            resnet_time_scale_shift (str): 时间缩放偏移类型
+            resnet_act_fn (str): ResNet激活函数
+            resnet_groups (int): ResNet组数
+            resnet_pre_norm (bool): 是否预归一化
+            num_attention_heads (int): 注意力头数
+            output_scale_factor (float): 输出缩放因子
+            cross_attention_dim (int): 交叉注意力维度
+            dual_cross_attention (bool): 是否使用双重交叉注意力
+            use_linear_projection (bool): 是否使用线性投影
+            upcast_attention (bool): 是否上转换注意力
+            attention_type (str): 注意力类型
+        """
         super().__init__()
+        logger.debug(f"初始化 UNetMidBlock2DCrossAttn，输入通道数: {in_channels}")
 
         self.has_cross_attention = True
         self.num_attention_heads = num_attention_heads
@@ -683,11 +858,11 @@ class UNetMidBlock2DCrossAttn(nn.Module):
             resnet_groups if resnet_groups is not None else min(in_channels // 4, 32)
         )
 
-        # support for variable transformer layers per block
+        # 支持每个块的可变Transformer层数
         if isinstance(transformer_layers_per_block, int):
             transformer_layers_per_block = [transformer_layers_per_block] * num_layers
 
-        # there is always at least one resnet
+        # 至少有一个resnet块
         resnets = [
             ResnetBlock2D(
                 in_channels=in_channels,
@@ -704,8 +879,10 @@ class UNetMidBlock2DCrossAttn(nn.Module):
         ]
         attentions = []
 
+        # 创建注意力块和resnet块
         for i in range(num_layers):
             if not dual_cross_attention:
+                logger.debug(f"添加 Transformer2DModel 注意力块 {i}")
                 attentions.append(
                     Transformer2DModel(
                         num_attention_heads,
@@ -720,6 +897,7 @@ class UNetMidBlock2DCrossAttn(nn.Module):
                     )
                 )
             else:
+                logger.debug(f"添加 DualTransformer2DModel 注意力块 {i}")
                 attentions.append(
                     DualTransformer2DModel(
                         num_attention_heads,
@@ -761,14 +939,39 @@ class UNetMidBlock2DCrossAttn(nn.Module):
         self_attn_block_embs: Optional[List[torch.Tensor]] = None,
         self_attn_block_embs_mode: Literal["read", "write"] = "write",
     ) -> torch.FloatTensor:
+        """
+        前向传播函数
+        
+        Args:
+            hidden_states (torch.FloatTensor): 隐藏状态输入
+            temb (Optional[torch.FloatTensor]): 时间嵌入
+            encoder_hidden_states (Optional[torch.FloatTensor]): 编码器隐藏状态
+            attention_mask (Optional[torch.FloatTensor]): 注意力掩码
+            cross_attention_kwargs (Optional[Dict[str, Any]]): 交叉注意力参数
+            encoder_attention_mask (Optional[torch.FloatTensor]): 编码器注意力掩码
+            self_attn_block_embs (Optional[List[torch.Tensor]]): 自注意力块嵌入
+            self_attn_block_embs_mode (Literal["read", "write"]): 自注意力块嵌入模式
+
+        Returns:
+            torch.FloatTensor: 前向传播后的输出张量
+        """
+        logger.debug(f"UNetMidBlock2DCrossAttn 前向传播开始，输入形状: {hidden_states.shape}")
+        
+        # 获取LoRA缩放因子
         lora_scale = (
             cross_attention_kwargs.get("scale", 1.0)
             if cross_attention_kwargs is not None
             else 1.0
         )
+        
+        # 第一个resnet块
         hidden_states = self.resnets[0](hidden_states, temb, scale=lora_scale)
+        logger.debug(f"经过第一个 ResNet 块后形状: {hidden_states.shape}")
+        
+        # 遍历注意力块和resnet块
         for attn, resnet in zip(self.attentions, self.resnets[1:]):
             if self.training and self.gradient_checkpointing:
+                logger.debug("使用梯度检查点技术")
 
                 def create_custom_forward(module, return_dict=None):
                     def custom_forward(*inputs):
@@ -792,12 +995,14 @@ class UNetMidBlock2DCrossAttn(nn.Module):
                     self_attn_block_embs=self_attn_block_embs,
                     self_attn_block_embs_mode=self_attn_block_embs_mode,
                 )[0]
+                logger.debug(f"经过注意力块后形状: {hidden_states.shape}")
                 hidden_states = torch.utils.checkpoint.checkpoint(
                     create_custom_forward(resnet),
                     hidden_states,
                     temb,
                     **ckpt_kwargs,
                 )
+                logger.debug(f"经过 ResNet 块后形状: {hidden_states.shape}")
             else:
                 hidden_states = attn(
                     hidden_states,
@@ -808,12 +1013,18 @@ class UNetMidBlock2DCrossAttn(nn.Module):
                     return_dict=False,
                     self_attn_block_embs=self_attn_block_embs,
                 )[0]
+                logger.debug(f"经过注意力块后形状: {hidden_states.shape}")
                 hidden_states = resnet(hidden_states, temb, scale=lora_scale)
+                logger.debug(f"经过 ResNet 块后形状: {hidden_states.shape}")
 
+        logger.debug(f"UNetMidBlock2DCrossAttn 前向传播完成，输出形状: {hidden_states.shape}")
         return hidden_states
 
 
 class UNetMidBlock2DSimpleCrossAttn(nn.Module):
+    """
+    简单交叉注意力UNet中间块
+    """
     def __init__(
         self,
         in_channels: int,
@@ -832,7 +1043,28 @@ class UNetMidBlock2DSimpleCrossAttn(nn.Module):
         only_cross_attention: bool = False,
         cross_attention_norm: Optional[str] = None,
     ):
+        """
+        初始化简单交叉注意力UNet中间块
+        
+        Args:
+            in_channels (int): 输入通道数
+            temb_channels (int): 时间嵌入通道数
+            dropout (float): Dropout概率
+            num_layers (int): 层数
+            resnet_eps (float): ResNet epsilon值
+            resnet_time_scale_shift (str): 时间缩放偏移类型
+            resnet_act_fn (str): ResNet激活函数
+            resnet_groups (int): ResNet组数
+            resnet_pre_norm (bool): 是否预归一化
+            attention_head_dim (int): 注意力头维度
+            output_scale_factor (float): 输出缩放因子
+            cross_attention_dim (int): 交叉注意力维度
+            skip_time_act (bool): 是否跳过时间激活
+            only_cross_attention (bool): 是否仅使用交叉注意力
+            cross_attention_norm (Optional[str]): 交叉注意力归一化类型
+        """
         super().__init__()
+        logger.debug(f"初始化 UNetMidBlock2DSimpleCrossAttn，输入通道数: {in_channels}")
 
         self.has_cross_attention = True
 
@@ -843,7 +1075,7 @@ class UNetMidBlock2DSimpleCrossAttn(nn.Module):
 
         self.num_heads = in_channels // self.attention_head_dim
 
-        # there is always at least one resnet
+        # 至少有一个resnet块
         resnets = [
             ResnetBlock2D(
                 in_channels=in_channels,
@@ -861,6 +1093,7 @@ class UNetMidBlock2DSimpleCrossAttn(nn.Module):
         ]
         attentions = []
 
+        # 创建注意力块和resnet块
         for _ in range(num_layers):
             processor = (
                 AttnAddedKVProcessor2_0()
@@ -913,25 +1146,47 @@ class UNetMidBlock2DSimpleCrossAttn(nn.Module):
         self_attn_block_embs: Optional[List[torch.Tensor]] = None,
         self_attn_block_embs_mode: Literal["read", "write"] = "write",
     ) -> torch.FloatTensor:
+        """
+        前向传播函数
+        
+        Args:
+            hidden_states (torch.FloatTensor): 隐藏状态输入
+            temb (Optional[torch.FloatTensor]): 时间嵌入
+            encoder_hidden_states (Optional[torch.FloatTensor]): 编码器隐藏状态
+            attention_mask (Optional[torch.FloatTensor]): 注意力掩码
+            cross_attention_kwargs (Optional[Dict[str, Any]]): 交叉注意力参数
+            encoder_attention_mask (Optional[torch.FloatTensor]): 编码器注意力掩码
+            self_attn_block_embs (Optional[List[torch.Tensor]]): 自注意力块嵌入
+            self_attn_block_embs_mode (Literal["read", "write"]): 自注意力块嵌入模式
+
+        Returns:
+            torch.FloatTensor: 前向传播后的输出张量
+        """
+        logger.debug(f"UNetMidBlock2DSimpleCrossAttn 前向传播开始，输入形状: {hidden_states.shape}")
+        
+        # 处理交叉注意力参数
         cross_attention_kwargs = (
             cross_attention_kwargs if cross_attention_kwargs is not None else {}
         )
         lora_scale = cross_attention_kwargs.get("scale", 1.0)
 
+        # 设置注意力掩码
         if attention_mask is None:
-            # if encoder_hidden_states is defined: we are doing cross-attn, so we should use cross-attn mask.
+            # 如果定义了 encoder_hidden_states: 我们正在进行交叉注意力，所以应该使用交叉注意力掩码
             mask = None if encoder_hidden_states is None else encoder_attention_mask
         else:
-            # when attention_mask is defined: we don't even check for encoder_attention_mask.
-            # this is to maintain compatibility with UnCLIP, which uses 'attention_mask' param for cross-attn masks.
-            # TODO: UnCLIP should express cross-attn mask via encoder_attention_mask param instead of via attention_mask.
-            #       then we can simplify this whole if/else block to:
-            #         mask = attention_mask if encoder_hidden_states is None else encoder_attention_mask
+            # 当定义了 attention_mask: 我们甚至不检查 encoder_attention_mask
+            # 这是为了与 UnCLIP 兼容，UnCLIP 使用 'attention_mask' 参数进行交叉注意力掩码
             mask = attention_mask
 
+        # 第一个resnet块
         hidden_states = self.resnets[0](hidden_states, temb, scale=lora_scale)
+        logger.debug(f"经过第一个 ResNet 块后形状: {hidden_states.shape}")
+        
+        # 遍历注意力块和resnet块
         for attn, resnet in zip(self.attentions, self.resnets[1:]):
-            # attn
+            # 注意力块处理
+            logger.debug("处理注意力块")
             hidden_states = attn(
                 hidden_states,
                 encoder_hidden_states=encoder_hidden_states,
@@ -940,14 +1195,21 @@ class UNetMidBlock2DSimpleCrossAttn(nn.Module):
                 self_attn_block_embs=self_attn_block_embs,
                 self_attn_block_embs_mode=self_attn_block_embs_mode,
             )
+            logger.debug(f"经过注意力块后形状: {hidden_states.shape}")
 
-            # resnet
+            # resnet块处理
+            logger.debug("处理 ResNet 块")
             hidden_states = resnet(hidden_states, temb, scale=lora_scale)
+            logger.debug(f"经过 ResNet 块后形状: {hidden_states.shape}")
 
+        logger.debug(f"UNetMidBlock2DSimpleCrossAttn 前向传播完成，输出形状: {hidden_states.shape}")
         return hidden_states
 
 
 class CrossAttnDownBlock2D(nn.Module):
+    """
+    带有交叉注意力的下采样块
+    """
     print_idx = 0
 
     def __init__(
@@ -974,17 +1236,48 @@ class CrossAttnDownBlock2D(nn.Module):
         upcast_attention: bool = False,
         attention_type: str = "default",
     ):
+        """
+        初始化带有交叉注意力的下采样块
+        
+        Args:
+            in_channels (int): 输入通道数
+            out_channels (int): 输出通道数
+            temb_channels (int): 时间嵌入通道数
+            dropout (float): Dropout概率
+            num_layers (int): 层数
+            transformer_layers_per_block (Union[int, Tuple[int]]): 每个Transformer块的层数
+            resnet_eps (float): ResNet epsilon值
+            resnet_time_scale_shift (str): 时间缩放偏移类型
+            resnet_act_fn (str): ResNet激活函数
+            resnet_groups (int): ResNet组数
+            resnet_pre_norm (bool): 是否预归一化
+            num_attention_heads (int): 注意力头数
+            cross_attention_dim (int): 交叉注意力维度
+            output_scale_factor (float): 输出缩放因子
+            downsample_padding (int): 下采样填充大小
+            add_downsample (bool): 是否添加下采样
+            dual_cross_attention (bool): 是否使用双重交叉注意力
+            use_linear_projection (bool): 是否使用线性投影
+            only_cross_attention (bool): 是否仅使用交叉注意力
+            upcast_attention (bool): 是否上转换注意力
+            attention_type (str): 注意力类型
+        """
         super().__init__()
+        logger.debug(f"初始化 CrossAttnDownBlock2D，输入通道数: {in_channels}，输出通道数: {out_channels}")
+        
         resnets = []
         attentions = []
 
         self.has_cross_attention = True
         self.num_attention_heads = num_attention_heads
+        # 支持每个块的可变Transformer层数
         if isinstance(transformer_layers_per_block, int):
             transformer_layers_per_block = [transformer_layers_per_block] * num_layers
 
+        # 创建resnet块和注意力块
         for i in range(num_layers):
             in_channels = in_channels if i == 0 else out_channels
+            logger.debug(f"添加 ResNet 块 {i}")
             resnets.append(
                 ResnetBlock2D(
                     in_channels=in_channels,
@@ -1000,6 +1293,7 @@ class CrossAttnDownBlock2D(nn.Module):
                 )
             )
             if not dual_cross_attention:
+                logger.debug(f"添加 Transformer2DModel 注意力块 {i}")
                 attentions.append(
                     Transformer2DModel(
                         num_attention_heads,
@@ -1015,6 +1309,7 @@ class CrossAttnDownBlock2D(nn.Module):
                     )
                 )
             else:
+                logger.debug(f"添加 DualTransformer2DModel 注意力块 {i}")
                 attentions.append(
                     DualTransformer2DModel(
                         num_attention_heads,
@@ -1028,7 +1323,9 @@ class CrossAttnDownBlock2D(nn.Module):
         self.attentions = nn.ModuleList(attentions)
         self.resnets = nn.ModuleList(resnets)
 
+        # 添加下采样层
         if add_downsample:
+            logger.debug("添加下采样层")
             self.downsamplers = nn.ModuleList(
                 [
                     Downsample2D(
@@ -1057,8 +1354,28 @@ class CrossAttnDownBlock2D(nn.Module):
         self_attn_block_embs: Optional[List[torch.Tensor]] = None,
         self_attn_block_embs_mode: Literal["read", "write"] = "write",
     ) -> Tuple[torch.FloatTensor, Tuple[torch.FloatTensor, ...]]:
+        """
+        前向传播函数
+        
+        Args:
+            hidden_states (torch.FloatTensor): 隐藏状态输入
+            temb (Optional[torch.FloatTensor]): 时间嵌入
+            encoder_hidden_states (Optional[torch.FloatTensor]): 编码器隐藏状态
+            attention_mask (Optional[torch.FloatTensor]): 注意力掩码
+            cross_attention_kwargs (Optional[Dict[str, Any]]): 交叉注意力参数
+            encoder_attention_mask (Optional[torch.FloatTensor]): 编码器注意力掩码
+            additional_residuals (Optional[torch.FloatTensor]): 额外残差
+            self_attn_block_embs (Optional[List[torch.Tensor]]): 自注意力块嵌入
+            self_attn_block_embs_mode (Literal["read", "write"]): 自注意力块嵌入模式
+
+        Returns:
+            Tuple[torch.FloatTensor, Tuple[torch.FloatTensor, ...]]: 输出张量和中间状态元组
+        """
+        logger.debug(f"CrossAttnDownBlock2D 前向传播开始，输入形状: {hidden_states.shape}")
+        
         output_states = ()
 
+        # 获取LoRA缩放因子
         lora_scale = (
             cross_attention_kwargs.get("scale", 1.0)
             if cross_attention_kwargs is not None
@@ -1067,8 +1384,10 @@ class CrossAttnDownBlock2D(nn.Module):
 
         blocks = list(zip(self.resnets, self.attentions))
 
+        # 遍历resnet块和注意力块
         for i, (resnet, attn) in enumerate(blocks):
             if self.training and self.gradient_checkpointing:
+                logger.debug(f"使用梯度检查点技术处理块 {i}")
 
                 def create_custom_forward(module, return_dict=None):
                     def custom_forward(*inputs):
@@ -1102,9 +1421,11 @@ class CrossAttnDownBlock2D(nn.Module):
                     self_attn_block_embs_mode=self_attn_block_embs_mode,
                 )[0]
             else:
+                logger.debug(f"处理 ResNet 块 {i}")
                 hidden_states = resnet(hidden_states, temb, scale=lora_scale)
                 if self.print_idx == 0:
                     logger.debug(f"unet3d after resnet {hidden_states.mean()}")
+                logger.debug(f"处理注意力块 {i}")
                 hidden_states = attn(
                     hidden_states,
                     encoder_hidden_states=encoder_hidden_states,
@@ -1116,23 +1437,30 @@ class CrossAttnDownBlock2D(nn.Module):
                     self_attn_block_embs_mode=self_attn_block_embs_mode,
                 )[0]
 
-            # apply additional residuals to the output of the last pair of resnet and attention blocks
+            # 将额外残差应用于最后一对resnet和注意力块的输出
             if i == len(blocks) - 1 and additional_residuals is not None:
+                logger.debug("应用额外残差")
                 hidden_states = hidden_states + additional_residuals
 
             output_states = output_states + (hidden_states,)
 
+        # 处理下采样
         if self.downsamplers is not None:
+            logger.debug("处理下采样")
             for downsampler in self.downsamplers:
                 hidden_states = downsampler(hidden_states, scale=lora_scale)
 
             output_states = output_states + (hidden_states,)
 
         self.print_idx += 1
+        logger.debug(f"CrossAttnDownBlock2D 前向传播完成，输出形状: {hidden_states.shape}")
         return hidden_states, output_states
 
 
 class DownBlock2D(nn.Module):
+    """
+    2D下采样块
+    """
     def __init__(
         self,
         in_channels: int,
@@ -1149,11 +1477,33 @@ class DownBlock2D(nn.Module):
         add_downsample: bool = True,
         downsample_padding: int = 1,
     ):
+        """
+        初始化2D下采样块
+        
+        Args:
+            in_channels (int): 输入通道数
+            out_channels (int): 输出通道数
+            temb_channels (int): 时间嵌入通道数
+            dropout (float): Dropout概率
+            num_layers (int): 层数
+            resnet_eps (float): ResNet epsilon值
+            resnet_time_scale_shift (str): 时间缩放偏移类型
+            resnet_act_fn (str): ResNet激活函数
+            resnet_groups (int): ResNet组数
+            resnet_pre_norm (bool): 是否预归一化
+            output_scale_factor (float): 输出缩放因子
+            add_downsample (bool): 是否添加下采样
+            downsample_padding (int): 下采样填充大小
+        """
         super().__init__()
+        logger.debug(f"初始化 DownBlock2D，输入通道数: {in_channels}，输出通道数: {out_channels}")
+        
         resnets = []
 
+        # 创建resnet块
         for i in range(num_layers):
             in_channels = in_channels if i == 0 else out_channels
+            logger.debug(f"添加 ResNet 块 {i}")
             resnets.append(
                 ResnetBlock2D(
                     in_channels=in_channels,
@@ -1171,7 +1521,9 @@ class DownBlock2D(nn.Module):
 
         self.resnets = nn.ModuleList(resnets)
 
+        # 添加下采样层
         if add_downsample:
+            logger.debug("添加下采样层")
             self.downsamplers = nn.ModuleList(
                 [
                     Downsample2D(
@@ -1196,10 +1548,27 @@ class DownBlock2D(nn.Module):
         self_attn_block_embs: Optional[List[torch.Tensor]] = None,
         self_attn_block_embs_mode: Literal["read", "write"] = "write",
     ) -> Tuple[torch.FloatTensor, Tuple[torch.FloatTensor, ...]]:
+        """
+        前向传播函数
+        
+        Args:
+            hidden_states (torch.FloatTensor): 隐藏状态输入
+            temb (Optional[torch.FloatTensor]): 时间嵌入
+            scale (float): 缩放因子
+            self_attn_block_embs (Optional[List[torch.Tensor]]): 自注意力块嵌入
+            self_attn_block_embs_mode (Literal["read", "write"]): 自注意力块嵌入模式
+
+        Returns:
+            Tuple[torch.FloatTensor, Tuple[torch.FloatTensor, ...]]: 输出张量和中间状态元组
+        """
+        logger.debug(f"DownBlock2D 前向传播开始，输入形状: {hidden_states.shape}")
+        
         output_states = ()
 
+        # 遍历resnet块
         for resnet in self.resnets:
             if self.training and self.gradient_checkpointing:
+                logger.debug("使用梯度检查点技术")
 
                 def create_custom_forward(module):
                     def custom_forward(*inputs):
@@ -1219,20 +1588,27 @@ class DownBlock2D(nn.Module):
                         create_custom_forward(resnet), hidden_states, temb
                     )
             else:
+                logger.debug("处理 ResNet 块")
                 hidden_states = resnet(hidden_states, temb, scale=scale)
 
             output_states = output_states + (hidden_states,)
 
+        # 处理下采样
         if self.downsamplers is not None:
+            logger.debug("处理下采样")
             for downsampler in self.downsamplers:
                 hidden_states = downsampler(hidden_states, scale=scale)
 
             output_states = output_states + (hidden_states,)
 
+        logger.debug(f"DownBlock2D 前向传播完成，输出形状: {hidden_states.shape}")
         return hidden_states, output_states
 
 
 class CrossAttnUpBlock2D(nn.Module):
+    """
+    带有交叉注意力的上采样块
+    """
     def __init__(
         self,
         in_channels: int,
@@ -1258,20 +1634,52 @@ class CrossAttnUpBlock2D(nn.Module):
         upcast_attention: bool = False,
         attention_type: str = "default",
     ):
+        """
+        初始化带有交叉注意力的上采样块
+        
+        Args:
+            in_channels (int): 输入通道数
+            out_channels (int): 输出通道数
+            prev_output_channel (int): 前一个块的输出通道数
+            temb_channels (int): 时间嵌入通道数
+            resolution_idx (Optional[int]): 分辨率索引
+            dropout (float): Dropout概率
+            num_layers (int): 层数
+            transformer_layers_per_block (Union[int, Tuple[int]]): 每个Transformer块的层数
+            resnet_eps (float): ResNet epsilon值
+            resnet_time_scale_shift (str): 时间缩放偏移类型
+            resnet_act_fn (str): ResNet激活函数
+            resnet_groups (int): ResNet组数
+            resnet_pre_norm (bool): 是否预归一化
+            num_attention_heads (int): 注意力头数
+            cross_attention_dim (int): 交叉注意力维度
+            output_scale_factor (float): 输出缩放因子
+            add_upsample (bool): 是否添加上采样
+            dual_cross_attention (bool): 是否使用双重交叉注意力
+            use_linear_projection (bool): 是否使用线性投影
+            only_cross_attention (bool): 是否仅使用交叉注意力
+            upcast_attention (bool): 是否上转换注意力
+            attention_type (str): 注意力类型
+        """
         super().__init__()
+        logger.debug(f"初始化 CrossAttnUpBlock2D，输入通道数: {in_channels}，输出通道数: {out_channels}")
+        
         resnets = []
         attentions = []
 
         self.has_cross_attention = True
         self.num_attention_heads = num_attention_heads
 
+        # 支持每个块的可变Transformer层数
         if isinstance(transformer_layers_per_block, int):
             transformer_layers_per_block = [transformer_layers_per_block] * num_layers
 
+        # 创建resnet块和注意力块
         for i in range(num_layers):
             res_skip_channels = in_channels if (i == num_layers - 1) else out_channels
             resnet_in_channels = prev_output_channel if i == 0 else out_channels
 
+            logger.debug(f"添加 ResNet 块 {i}")
             resnets.append(
                 ResnetBlock2D(
                     in_channels=resnet_in_channels + res_skip_channels,
@@ -1287,6 +1695,7 @@ class CrossAttnUpBlock2D(nn.Module):
                 )
             )
             if not dual_cross_attention:
+                logger.debug(f"添加 Transformer2DModel 注意力块 {i}")
                 attentions.append(
                     Transformer2DModel(
                         num_attention_heads,
@@ -1302,6 +1711,7 @@ class CrossAttnUpBlock2D(nn.Module):
                     )
                 )
             else:
+                logger.debug(f"添加 DualTransformer2DModel 注意力块 {i}")
                 attentions.append(
                     DualTransformer2DModel(
                         num_attention_heads,
@@ -1315,7 +1725,9 @@ class CrossAttnUpBlock2D(nn.Module):
         self.attentions = nn.ModuleList(attentions)
         self.resnets = nn.ModuleList(resnets)
 
+        # 添加上采样层
         if add_upsample:
+            logger.debug("添加上采样层")
             self.upsamplers = nn.ModuleList(
                 [Upsample2D(out_channels, use_conv=True, out_channels=out_channels)]
             )
@@ -1338,6 +1750,27 @@ class CrossAttnUpBlock2D(nn.Module):
         self_attn_block_embs: Optional[List[torch.Tensor]] = None,
         self_attn_block_embs_mode: Literal["read", "write"] = "write",
     ) -> torch.FloatTensor:
+        """
+        前向传播函数
+        
+        Args:
+            hidden_states (torch.FloatTensor): 隐藏状态输入
+            res_hidden_states_tuple (Tuple[torch.FloatTensor, ...]): 残差隐藏状态元组
+            temb (Optional[torch.FloatTensor]): 时间嵌入
+            encoder_hidden_states (Optional[torch.FloatTensor]): 编码器隐藏状态
+            cross_attention_kwargs (Optional[Dict[str, Any]]): 交叉注意力参数
+            upsample_size (Optional[int]): 上采样大小
+            attention_mask (Optional[torch.FloatTensor]): 注意力掩码
+            encoder_attention_mask (Optional[torch.FloatTensor]): 编码器注意力掩码
+            self_attn_block_embs (Optional[List[torch.Tensor]]): 自注意力块嵌入
+            self_attn_block_embs_mode (Literal["read", "write"]): 自注意力块嵌入模式
+
+        Returns:
+            torch.FloatTensor: 输出张量
+        """
+        logger.debug(f"CrossAttnUpBlock2D 前向传播开始，输入形状: {hidden_states.shape}")
+        
+        # 获取LoRA缩放因子
         lora_scale = (
             cross_attention_kwargs.get("scale", 1.0)
             if cross_attention_kwargs is not None
@@ -1350,12 +1783,13 @@ class CrossAttnUpBlock2D(nn.Module):
             and getattr(self, "b2", None)
         )
 
+        # 遍历resnet块和注意力块
         for resnet, attn in zip(self.resnets, self.attentions):
-            # pop res hidden states
+            # 弹出残差隐藏状态
             res_hidden_states = res_hidden_states_tuple[-1]
             res_hidden_states_tuple = res_hidden_states_tuple[:-1]
 
-            # FreeU: Only operate on the first two stages
+            # FreeU: 仅在前两个阶段操作
             if is_freeu_enabled:
                 hidden_states, res_hidden_states = apply_freeu(
                     self.resolution_idx,
@@ -1370,6 +1804,7 @@ class CrossAttnUpBlock2D(nn.Module):
             hidden_states = torch.cat([hidden_states, res_hidden_states], dim=1)
 
             if self.training and self.gradient_checkpointing:
+                logger.debug("使用梯度检查点技术")
 
                 def create_custom_forward(module, return_dict=None):
                     def custom_forward(*inputs):
@@ -1389,6 +1824,7 @@ class CrossAttnUpBlock2D(nn.Module):
                     temb,
                     **ckpt_kwargs,
                 )
+                logger.debug(f"经过 ResNet 块后形状: {hidden_states.shape}")
                 hidden_states = attn(
                     hidden_states,
                     encoder_hidden_states=encoder_hidden_states,
@@ -1399,8 +1835,12 @@ class CrossAttnUpBlock2D(nn.Module):
                     self_attn_block_embs=self_attn_block_embs,
                     self_attn_block_embs_mode=self_attn_block_embs_mode,
                 )[0]
+                logger.debug(f"经过注意力块后形状: {hidden_states.shape}")
             else:
+                logger.debug("处理 ResNet 块")
                 hidden_states = resnet(hidden_states, temb, scale=lora_scale)
+                logger.debug(f"经过 ResNet 块后形状: {hidden_states.shape}")
+                logger.debug("处理注意力块")
                 hidden_states = attn(
                     hidden_states,
                     encoder_hidden_states=encoder_hidden_states,
@@ -1410,17 +1850,24 @@ class CrossAttnUpBlock2D(nn.Module):
                     return_dict=False,
                     self_attn_block_embs=self_attn_block_embs,
                 )[0]
+                logger.debug(f"经过注意力块后形状: {hidden_states.shape}")
 
+        # 处理上采样
         if self.upsamplers is not None:
+            logger.debug("处理上采样")
             for upsampler in self.upsamplers:
                 hidden_states = upsampler(
                     hidden_states, upsample_size, scale=lora_scale
                 )
 
+        logger.debug(f"CrossAttnUpBlock2D 前向传播完成，输出形状: {hidden_states.shape}")
         return hidden_states
 
 
 class UpBlock2D(nn.Module):
+    """
+    2D上采样块
+    """
     def __init__(
         self,
         in_channels: int,
@@ -1438,13 +1885,36 @@ class UpBlock2D(nn.Module):
         output_scale_factor: float = 1.0,
         add_upsample: bool = True,
     ):
+        """
+        初始化2D上采样块
+        
+        Args:
+            in_channels (int): 输入通道数
+            prev_output_channel (int): 前一个块的输出通道数
+            out_channels (int): 输出通道数
+            temb_channels (int): 时间嵌入通道数
+            resolution_idx (Optional[int]): 分辨率索引
+            dropout (float): Dropout概率
+            num_layers (int): 层数
+            resnet_eps (float): ResNet epsilon值
+            resnet_time_scale_shift (str): 时间缩放偏移类型
+            resnet_act_fn (str): ResNet激活函数
+            resnet_groups (int): ResNet组数
+            resnet_pre_norm (bool): 是否预归一化
+            output_scale_factor (float): 输出缩放因子
+            add_upsample (bool): 是否添加上采样
+        """
         super().__init__()
+        logger.debug(f"初始化 UpBlock2D，输入通道数: {in_channels}，输出通道数: {out_channels}")
+        
         resnets = []
 
+        # 创建resnet块
         for i in range(num_layers):
             res_skip_channels = in_channels if (i == num_layers - 1) else out_channels
             resnet_in_channels = prev_output_channel if i == 0 else out_channels
 
+            logger.debug(f"添加 ResNet 块 {i}")
             resnets.append(
                 ResnetBlock2D(
                     in_channels=resnet_in_channels + res_skip_channels,
@@ -1462,7 +1932,9 @@ class UpBlock2D(nn.Module):
 
         self.resnets = nn.ModuleList(resnets)
 
+        # 添加上采样层
         if add_upsample:
+            logger.debug("添加上采样层")
             self.upsamplers = nn.ModuleList(
                 [Upsample2D(out_channels, use_conv=True, out_channels=out_channels)]
             )
@@ -1482,6 +1954,23 @@ class UpBlock2D(nn.Module):
         self_attn_block_embs: Optional[List[torch.Tensor]] = None,
         self_attn_block_embs_mode: Literal["read", "write"] = "write",
     ) -> torch.FloatTensor:
+        """
+        前向传播函数
+        
+        Args:
+            hidden_states (torch.FloatTensor): 隐藏状态输入
+            res_hidden_states_tuple (Tuple[torch.FloatTensor, ...]): 残差隐藏状态元组
+            temb (Optional[torch.FloatTensor]): 时间嵌入
+            upsample_size (Optional[int]): 上采样大小
+            scale (float): 缩放因子
+            self_attn_block_embs (Optional[List[torch.Tensor]]): 自注意力块嵌入
+            self_attn_block_embs_mode (Literal["read", "write"]): 自注意力块嵌入模式
+
+        Returns:
+            torch.FloatTensor: 输出张量
+        """
+        logger.debug(f"UpBlock2D 前向传播开始，输入形状: {hidden_states.shape}")
+        
         is_freeu_enabled = (
             getattr(self, "s1", None)
             and getattr(self, "s2", None)
@@ -1489,12 +1978,13 @@ class UpBlock2D(nn.Module):
             and getattr(self, "b2", None)
         )
 
+        # 遍历resnet块
         for resnet in self.resnets:
-            # pop res hidden states
+            # 弹出残差隐藏状态
             res_hidden_states = res_hidden_states_tuple[-1]
             res_hidden_states_tuple = res_hidden_states_tuple[:-1]
 
-            # FreeU: Only operate on the first two stages
+            # FreeU: 仅在前两个阶段操作
             if is_freeu_enabled:
                 hidden_states, res_hidden_states = apply_freeu(
                     self.resolution_idx,
@@ -1509,6 +1999,7 @@ class UpBlock2D(nn.Module):
             hidden_states = torch.cat([hidden_states, res_hidden_states], dim=1)
 
             if self.training and self.gradient_checkpointing:
+                logger.debug("使用梯度检查点技术")
 
                 def create_custom_forward(module):
                     def custom_forward(*inputs):
@@ -1528,10 +2019,16 @@ class UpBlock2D(nn.Module):
                         create_custom_forward(resnet), hidden_states, temb
                     )
             else:
+                logger.debug("处理 ResNet 块")
                 hidden_states = resnet(hidden_states, temb, scale=scale)
+                logger.debug(f"经过 ResNet 块后形状: {hidden_states.shape}")
 
+        # 处理上采样
         if self.upsamplers is not None:
+            logger.debug("处理上采样")
             for upsampler in self.upsamplers:
                 hidden_states = upsampler(hidden_states, upsample_size, scale=scale)
+            logger.debug(f"经过上采样后形状: {hidden_states.shape}")
 
+        logger.debug(f"UpBlock2D 前向传播完成，输出形状: {hidden_states.shape}")
         return hidden_states

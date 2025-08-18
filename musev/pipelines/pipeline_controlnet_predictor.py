@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import copy
 from typing import Any, Callable, Dict, Iterable, Union
 import PIL
@@ -83,6 +84,7 @@ def update_controlnet_processor_params(
     src: Union[Dict, List[Dict]], dst: Union[Dict, List[Dict]]
 ):
     """merge dst into src"""
+    logger.debug("调用 update_controlnet_processor_params 函数")
     if isinstance(src, list) and not isinstance(dst, List):
         dst = [dst] * len(src)
     if isinstance(src, list) and isinstance(dst, list):
@@ -96,6 +98,7 @@ def update_controlnet_processor_params(
     if dst is None:
         dst = {}
     dct.update(dst)
+    logger.debug("完成 update_controlnet_processor_params 函数")
     return dct
 
 
@@ -141,6 +144,7 @@ class DiffusersPipelinePredictor(object):
         pose_guider: Optional[nn.Module] = None,
         enable_zero_snr: bool = False,
     ) -> None:
+        logger.debug("初始化 DiffusersPipelinePredictor")
         self.sd_model_path = sd_model_path
         self.unet = unet
         self.controlnet_name = controlnet_name
@@ -162,6 +166,7 @@ class DiffusersPipelinePredictor(object):
         self.dtype = dtype
         self.lcm_lora_dct = lcm_lora_dct
         if controlnet is None and controlnet_name is not None:
+            logger.debug(f"加载 ControlNet 模型: {controlnet_name}")
             controlnet, controlnet_processor, processor_params = load_controlnet_model(
                 controlnet_name,
                 device=device,
@@ -177,34 +182,43 @@ class DiffusersPipelinePredictor(object):
             )
             self.controlnet_processor = controlnet_processor
             self.controlnet_processor_params = processor_params
-            logger.debug(f"init controlnet controlnet_name={controlnet_name}")
+            logger.debug(f"初始化 ControlNet 完成，controlnet_name={controlnet_name}")
 
         if controlnet is not None:
+            logger.debug("将 ControlNet 移至指定设备")
             controlnet = controlnet.to(device=device, dtype=dtype)
             controlnet.eval()
         if pose_guider is not None:
+            logger.debug("将 Pose Guider 移至指定设备")
             pose_guider = pose_guider.to(device=device, dtype=dtype)
             pose_guider.eval()
+        logger.debug("将 UNet 移至指定设备")
         unet.to(device=device, dtype=dtype)
         unet.eval()
         if referencenet is not None:
+            logger.debug("将 ReferenceNet 移至指定设备")
             referencenet.to(device=device, dtype=dtype)
             referencenet.eval()
         if ip_adapter_image_proj is not None:
+            logger.debug("将 IP Adapter Image Proj 移至指定设备")
             ip_adapter_image_proj.to(device=device, dtype=dtype)
             ip_adapter_image_proj.eval()
         if vision_clip_extractor is not None:
+            logger.debug("将 Vision Clip Extractor 移至指定设备")
             vision_clip_extractor.to(device=device, dtype=dtype)
             vision_clip_extractor.eval()
         if face_emb_extractor is not None:
+            logger.debug("将 Face Embedding Extractor 移至指定设备")
             face_emb_extractor.to(device=device, dtype=dtype)
             face_emb_extractor.eval()
         if facein_image_proj is not None:
+            logger.debug("将 FaceIn Image Proj 移至指定设备")
             facein_image_proj.to(device=device, dtype=dtype)
             facein_image_proj.eval()
 
         if isinstance(vae_model, str):
             # TODO: poor implementation, to improve
+            logger.debug(f"加载 VAE 模型: {vae_model}")
             if "consistency" in vae_model:
                 vae = ConsistencyDecoderVAE.from_pretrained(vae_model)
             else:
@@ -214,12 +228,15 @@ class DiffusersPipelinePredictor(object):
         else:
             vae = None
         if vae is not None:
+            logger.debug("将 VAE 移至指定设备")
             vae.to(device=device, dtype=dtype)
             vae.eval()
         if ip_adapter_face_emb_extractor is not None:
+            logger.debug("将 IP Adapter Face Embedding Extractor 移至指定设备")
             ip_adapter_face_emb_extractor.to(device=device, dtype=dtype)
             ip_adapter_face_emb_extractor.eval()
         if ip_adapter_face_image_proj is not None:
+            logger.debug("将 IP Adapter Face Image Proj 移至指定设备")
             ip_adapter_face_image_proj.to(device=device, dtype=dtype)
             ip_adapter_face_image_proj.eval()
         params = {
@@ -240,22 +257,25 @@ class DiffusersPipelinePredictor(object):
         }
         if vae is not None:
             params["vae"] = vae
+        logger.debug("创建 MusevControlNetPipeline")
         pipeline = MusevControlNetPipeline.from_pretrained(**params)
         pipeline = pipeline.to(torch_device=device, torch_dtype=dtype)
         logger.debug(
-            f"init pipeline from sd_model_path={sd_model_path}, device={device}, dtype={dtype}"
+            f"从 sd_model_path={sd_model_path} 初始化 pipeline 完成, device={device}, dtype={dtype}"
         )
         if (
             negative_embedding is not None
             and pipeline.text_encoder is not None
             and pipeline.tokenizer is not None
         ):
+            logger.debug("加载负向嵌入")
             for neg_emb_path, neg_token in negative_embedding:
                 pipeline.load_textual_inversion(neg_emb_path, token=neg_token)
 
         # pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
         # pipe.enable_model_cpu_offload()
         if not enable_zero_snr:
+            logger.debug("设置 EulerDiscreteScheduler")
             pipeline.scheduler = EulerDiscreteScheduler.from_config(
                 pipeline.scheduler.config
             )
@@ -269,6 +289,7 @@ class DiffusersPipelinePredictor(object):
             # pipeline.scheduler = DDPMScheduler.from_config(pipeline.scheduler.config)
         else:
             # moore scheduler, just for codetest
+            logger.debug("设置 Zero-SNR DDIMScheduler")
             pipeline.scheduler = DDIMScheduler(
                 beta_start=0.00085,
                 beta_end=0.012,
@@ -281,12 +302,14 @@ class DiffusersPipelinePredictor(object):
                 timestep_spacing="trailing",
             )
 
+        logger.debug("启用 VAE 切片")
         pipeline.enable_vae_slicing()
         self.enable_xformers_memory_efficient_attention = (
             enable_xformers_memory_efficient_attention
         )
         if enable_xformers_memory_efficient_attention:
             if is_xformers_available():
+                logger.debug("启用 XFormers 内存高效注意力")
                 pipeline.enable_xformers_memory_efficient_attention()
             else:
                 raise ValueError(
@@ -295,29 +318,33 @@ class DiffusersPipelinePredictor(object):
         self.pipeline = pipeline
         self.unload_dict = []  # keep lora state
         if lora_dict is not None:
+            logger.debug("加载 LoRA 模型")
             self.load_lora(lora_dict=lora_dict)
-            logger.debug("load lora {}".format(" ".join(list(lora_dict.keys()))))
+            logger.debug("加载 LoRA {}".format(" ".join(list(lora_dict.keys()))))
 
         if lcm_lora_dct is not None:
+            logger.debug("设置 LCM 调度器并加载 LCM LoRA")
             self.pipeline.scheduler = LCMScheduler.from_config(
                 self.pipeline.scheduler.config
             )
             self.load_lora(lora_dict=lcm_lora_dct)
-            logger.debug("load lcm lora {}".format(" ".join(list(lcm_lora_dct.keys()))))
+            logger.debug("加载 LCM LoRA {}".format(" ".join(list(lcm_lora_dct.keys()))))
 
-        # logger.debug("Unet3Model Parameters")
-        # logger.debug(pformat(self.__dict__))
+        logger.debug("DiffusersPipelinePredictor 初始化完成")
 
     def load_lora(
         self,
         lora_dict: Dict[str, Dict],
     ):
+        logger.debug(f"加载 LoRA 字典: {list(lora_dict.keys())}")
         self.pipeline, unload_dict = update_pipeline_lora_models(
             self.pipeline, lora_dict, device=self.device
         )
         self.unload_dict += unload_dict
+        logger.debug("LoRA 加载完成")
 
     def unload_lora(self):
+        logger.debug("卸载 LoRA 模型")
         for layer_data in self.unload_dict:
             layer = layer_data["layer"]
             added_weight = layer_data["added_weight"]
@@ -325,21 +352,27 @@ class DiffusersPipelinePredictor(object):
         self.unload_dict = []
         gc.collect()
         torch.cuda.empty_cache()
+        logger.debug("LoRA 卸载完成")
 
     def update_unet(self, unet: nn.Module):
+        logger.debug("更新 UNet 模型")
         self.pipeline.unet = unet.to(device=self.device, dtype=self.dtype)
+        logger.debug("UNet 模型更新完成")
 
     def update_sd_model(self, model_path: str, text_model_path: str):
+        logger.debug(f"更新 SD 模型: {model_path}")
         self.pipeline = update_pipeline_basemodel(
             self.pipeline,
             model_path,
             text_sd_model_path=text_model_path,
             device=self.device,
         )
+        logger.debug("SD 模型更新完成")
 
     def update_sd_model_and_unet(
         self, lora_sd_path: str, lora_path: str, sd_model_path: str = None
     ):
+        logger.debug(f"更新 SD 模型和 UNet: {lora_sd_path}")
         self.pipeline = update_pipeline_model_parameters(
             self.pipeline,
             model_path=lora_sd_path,
@@ -347,11 +380,14 @@ class DiffusersPipelinePredictor(object):
             text_model_path=sd_model_path,
             device=self.device,
         )
+        logger.debug("SD 模型和 UNet 更新完成")
 
     def update_controlnet(self, controlnet_name=Union[str, List[str]]):
+        logger.debug(f"更新 ControlNet: {controlnet_name}")
         self.pipeline.controlnet = load_controlnet_model(controlnet_name).to(
             device=self.device, dtype=self.dtype
         )
+        logger.debug("ControlNet 更新完成")
 
     def run_pipe_text2video(
         self,
@@ -452,10 +488,11 @@ class DiffusersPipelinePredictor(object):
         2. when input paramter is None, use text2video to generate vis cond image, and use as refer_image and ip_adapter_image too.
         3. given from input paramter, but still redraw, update with redrawn vis cond image.
         """
+        logger.debug("开始执行 run_pipe_text2video")
         # crop resize images
         if condition_images is not None:
             logger.debug(
-                f"center crop resize condition_images={condition_images.shape}, to height={height}, width={width}"
+                f"中心裁剪并调整 condition_images={condition_images.shape}, 目标尺寸 height={height}, width={width}"
             )
             condition_images = batch_dynamic_crop_resize_images_v2(
                 condition_images,
@@ -464,7 +501,7 @@ class DiffusersPipelinePredictor(object):
             )
         if refer_image is not None:
             logger.debug(
-                f"center crop resize refer_image to height={height}, width={width}"
+                f"中心裁剪并调整 refer_image, 目标尺寸 height={height}, width={width}"
             )
             refer_image = batch_dynamic_crop_resize_images_v2(
                 refer_image,
@@ -473,7 +510,7 @@ class DiffusersPipelinePredictor(object):
             )
         if ip_adapter_image is not None:
             logger.debug(
-                f"center crop resize ip_adapter_image to height={height}, width={width}"
+                f"中心裁剪并调整 ip_adapter_image, 目标尺寸 height={height}, width={width}"
             )
             ip_adapter_image = batch_dynamic_crop_resize_images_v2(
                 ip_adapter_image,
@@ -482,7 +519,7 @@ class DiffusersPipelinePredictor(object):
             )
         if refer_face_image is not None:
             logger.debug(
-                f"center crop resize refer_face_image to height={height}, width={width}"
+                f"中心裁剪并调整 refer_face_image, 目标尺寸 height={height}, width={width}"
             )
             refer_face_image = batch_dynamic_crop_resize_images_v2(
                 refer_face_image,
@@ -495,7 +532,7 @@ class DiffusersPipelinePredictor(object):
         # if condition_images not None and need redraw, according to redraw_condition_image_with_ipdapter, redraw_condition_image_with_referencenet, refer_image, ip_adapter_image
         if n_vision_condition > 0:
             if condition_images is None and condition_latents is None:
-                logger.debug("run_pipe_text2video, generate first_image")
+                logger.debug("run_pipe_text2video, 生成首帧图像")
                 (
                     condition_images,
                     condition_latents,
@@ -539,7 +576,7 @@ class DiffusersPipelinePredictor(object):
                 and redraw_condition_image
                 and condition_latents is None
             ):
-                logger.debug("run_pipe_text2video, redraw first_image")
+                logger.debug("run_pipe_text2video, 重绘首帧图像")
 
                 (
                     condition_images,
@@ -592,14 +629,14 @@ class DiffusersPipelinePredictor(object):
             and condition_images is not None
         ):
             refer_image = condition_images * 255.0
-            logger.debug(f"update refer_image because of redraw_condition_image")
+            logger.debug(f"由于 redraw_condition_image 更新 refer_image")
         elif (
             refer_image is None
             and self.pipeline.referencenet is not None
             and condition_images is not None
         ):
             refer_image = condition_images * 255.0
-            logger.debug(f"update refer_image because of generate first_image")
+            logger.debug(f"由于生成首帧图像更新 refer_image")
 
         # ipadapter_image
         if (
@@ -608,14 +645,14 @@ class DiffusersPipelinePredictor(object):
             and condition_images is not None
         ):
             ip_adapter_image = condition_images * 255.0
-            logger.debug(f"update ip_adapter_image because of redraw_condition_image")
+            logger.debug(f"由于 redraw_condition_image 更新 ip_adapter_image")
         elif (
             ip_adapter_image is None
             and self.pipeline.ip_adapter_image_proj is not None
             and condition_images is not None
         ):
             ip_adapter_image = condition_images * 255.0
-            logger.debug(f"update ip_adapter_image because of generate first_image")
+            logger.debug(f"由于生成首帧图像更新 ip_adapter_image")
         # refer_image and ip_adapter_image, update mode from 2 and 3 as mentioned above end
 
         # refer_face_image, update mode from 2 and 3 as mentioned above start
@@ -625,14 +662,14 @@ class DiffusersPipelinePredictor(object):
             and condition_images is not None
         ):
             refer_face_image = condition_images * 255.0
-            logger.debug(f"update refer_face_image because of redraw_condition_image")
+            logger.debug(f"由于 redraw_condition_image 更新 refer_face_image")
         elif (
             refer_face_image is None
             and self.pipeline.facein_image_proj is not None
             and condition_images is not None
         ):
             refer_face_image = condition_images * 255.0
-            logger.debug(f"update face_image because of generate first_image")
+            logger.debug(f"由于生成首帧图像更新 face_image")
             # refer_face_image, update mode from 2 and 3 as mentioned above end
 
         last_mid_video_noises = None
@@ -651,44 +688,46 @@ class DiffusersPipelinePredictor(object):
                 if n_vision_condition > 0:
                     # ignore condition_images if condition_latents is not None in pipeline
                     if not fix_condition_images:
-                        logger.debug(f"{i_batch}, update condition_latents")
+                        logger.debug(f"{i_batch}, 更新 condition_latents")
                         condition_latents = out_latents_batch[
                             :, :, -n_vision_condition:, :, :
                         ]
                     else:
-                        logger.debug(f"{i_batch}, do not update condition_latents")
+                        logger.debug(f"{i_batch}, 不更新 condition_latents")
                 result_overlap = n_vision_condition
 
                 if not fixed_refer_image and n_vision_condition > 0:
-                    logger.debug("ref_image use last frame of last generated out video")
+                    logger.debug("ref_image 使用上一个生成视频的最后一帧")
                     refer_image = out_batch[:, :, -n_vision_condition:, :, :] * 255.0
                 else:
-                    logger.debug("use given fixed ref_image")
+                    logger.debug("使用给定的固定 ref_image")
 
                 if not fixed_ip_adapter_image and n_vision_condition > 0:
                     logger.debug(
-                        "ip_adapter_image use last frame of last generated out video"
+                        "ip_adapter_image 使用上一个生成视频的最后一帧"
                     )
                     ip_adapter_image = (
                         out_batch[:, :, -n_vision_condition:, :, :] * 255.0
                     )
                 else:
-                    logger.debug("use given fixed ip_adapter_image")
+                    logger.debug("使用给定的固定 ip_adapter_image")
 
                 if not fixed_refer_face_image and n_vision_condition > 0:
                     logger.debug(
-                        "refer_face_image use last frame of last generated out video"
+                        "refer_face_image 使用上一个生成视频的最后一帧"
                     )
                     refer_face_image = (
                         out_batch[:, :, -n_vision_condition:, :, :] * 255.0
                     )
                 else:
-                    logger.debug("use given fixed ip_adapter_image")
+                    logger.debug("使用给定的固定 ip_adapter_image")
 
                 run_video_length = video_length
             if same_seed is not None:
+                logger.debug(f"设置随机种子: {same_seed}")
                 _, generator = set_all_seed(same_seed)
 
+            logger.debug(f"执行 pipeline 生成视频片段: {i_batch}")
             out = self.pipeline(
                 video_length=run_video_length,  # int
                 prompt=prompt,
@@ -742,19 +781,24 @@ class DiffusersPipelinePredictor(object):
             out_latents_batch = out.latents[:, :, result_overlap:, :, :]
             out_videos.append(out_batch)
 
+        logger.debug("合并所有视频片段")
         out_videos = np.concatenate(out_videos, axis=2)
         if need_hist_match:
+            logger.debug("执行直方图匹配")
             out_videos[:, :, 1:, :, :] = hist_match_video_bcthw(
                 out_videos[:, :, 1:, :, :], out_videos[:, :, :1, :, :], value=255.0
             )
+        logger.debug("run_pipe_text2video 执行完成")
         return out_videos
 
     def run_pipe_with_latent_input(
         self,
     ):
+        logger.debug("调用 run_pipe_with_latent_input 函数")
         pass
 
     def run_pipe_middle2video_with_middle(self, middle: Tuple[str, Iterable]):
+        logger.debug("调用 run_pipe_middle2video_with_middle 函数")
         pass
 
     def run_pipe_video2video(
@@ -863,7 +907,9 @@ class DiffusersPipelinePredictor(object):
         similar to controlnet text2image pipeline, generate video with controlnet condition from given video.
         By now, sliding window only support time_size == step, overlap = 0.
         """
+        logger.debug("开始执行 run_pipe_video2video")
         if isinstance(video, str):
+            logger.debug(f"创建 DecordVideoDataset: {video}")
             video_reader = DecordVideoDataset(
                 video,
                 time_size=time_size,
@@ -887,7 +933,7 @@ class DiffusersPipelinePredictor(object):
         # crop resize images
         if condition_images is not None:
             logger.debug(
-                f"center crop resize condition_images={condition_images.shape}, to height={height}, width={width}"
+                f"中心裁剪并调整 condition_images={condition_images.shape}, 目标尺寸 height={height}, width={width}"
             )
             condition_images = batch_dynamic_crop_resize_images_v2(
                 condition_images,
@@ -896,7 +942,7 @@ class DiffusersPipelinePredictor(object):
             )
         if refer_image is not None:
             logger.debug(
-                f"center crop resize refer_image to height={height}, width={width}"
+                f"中心裁剪并调整 refer_image, 目标尺寸 height={height}, width={width}"
             )
             refer_image = batch_dynamic_crop_resize_images_v2(
                 refer_image,
@@ -905,7 +951,7 @@ class DiffusersPipelinePredictor(object):
             )
         if ip_adapter_image is not None:
             logger.debug(
-                f"center crop resize ip_adapter_image to height={height}, width={width}"
+                f"中心裁剪并调整 ip_adapter_image, 目标尺寸 height={height}, width={width}"
             )
             ip_adapter_image = batch_dynamic_crop_resize_images_v2(
                 ip_adapter_image,
@@ -914,7 +960,7 @@ class DiffusersPipelinePredictor(object):
             )
         if refer_face_image is not None:
             logger.debug(
-                f"center crop resize refer_face_image to height={height}, width={width}"
+                f"中心裁剪并调整 refer_face_image, 目标尺寸 height={height}, width={width}"
             )
             refer_face_image = batch_dynamic_crop_resize_images_v2(
                 refer_face_image,
@@ -934,6 +980,7 @@ class DiffusersPipelinePredictor(object):
             if max_batch_num is not None and i_batch == max_batch_num:
                 break
             # read and prepare video batch
+            logger.debug("读取并准备视频批次数据")
             batch = item.data
             batch = batch_dynamic_crop_resize_images(
                 batch,
@@ -945,12 +992,14 @@ class DiffusersPipelinePredictor(object):
             batch_size, channel, video_length, video_height, video_width = batch.shape
             # extract controlnet middle
             if self.pipeline.controlnet is not None:
+                logger.debug("提取 ControlNet 中间特征")
                 batch = rearrange(batch, "b c t h w-> (b t) h w c")
                 controlnet_processor_params = update_controlnet_processor_params(
                     src=self.controlnet_processor_params,
                     dst=controlnet_processor_params,
                 )
                 if not video_is_middle:
+                    logger.debug("处理 ControlNet 条件图像")
                     batch_condition = self.controlnet_processor(
                         data=batch,
                         data_channel_order="b h w c",
@@ -977,6 +1026,7 @@ class DiffusersPipelinePredictor(object):
                     and video_is_middle
                     and condition_images is not None
                 ):
+                    logger.debug("重新生成条件图像的姿势")
                     condition_images_reshape = rearrange(
                         condition_images, "b c t h w-> (b t) h w c"
                     )
@@ -998,6 +1048,7 @@ class DiffusersPipelinePredictor(object):
                 else:
                     condition_images_condition = None
                 if not isinstance(batch_condition, list):
+                    logger.debug("重新排列 batch_condition")
                     batch_condition = rearrange(
                         batch_condition, "(b t) c h w-> b c t h w", b=batch_size
                     )
@@ -1073,6 +1124,7 @@ class DiffusersPipelinePredictor(object):
                         first_image = condition_images
                         first_image_latents = None
                     else:
+                        logger.debug("生成首帧图像")
                         (
                             first_image,
                             first_image_latents,
@@ -1141,7 +1193,7 @@ class DiffusersPipelinePredictor(object):
                     if self.pipeline.controlnet is not None:
                         if not fix_condition_images:
                             logger.debug(
-                                f"{i_batch}, update first_image_controlnet_condition"
+                                f"{i_batch}, 更新 first_image_controlnet_condition"
                             )
 
                             if not isinstance(last_batch_condition, list):
@@ -1154,17 +1206,17 @@ class DiffusersPipelinePredictor(object):
                                 ]
                         else:
                             logger.debug(
-                                f"{i_batch}, do not update first_image_controlnet_condition"
+                                f"{i_batch}, 不更新 first_image_controlnet_condition"
                             )
                         control_image = batch_condition
                     else:
                         control_image = None
                         first_image_controlnet_condition = None
                     if not fix_condition_images:
-                        logger.debug(f"{i_batch}, update condition_images")
+                        logger.debug(f"{i_batch}, 更新 condition_images")
                         first_image_latents = out_latents_batch[:, :, -1:, :, :]
                     else:
-                        logger.debug(f"{i_batch}, do not update condition_images")
+                        logger.debug(f"{i_batch}, 不更新 condition_images")
 
                     if need_video2video:
                         video = batch
@@ -1175,35 +1227,36 @@ class DiffusersPipelinePredictor(object):
                     # 更新 ref_image和 ipadapter_image
                     if not fixed_refer_image:
                         logger.debug(
-                            "ref_image use last frame of last generated out video"
+                            "ref_image 使用上一个生成视频的最后一帧"
                         )
                         refer_image = (
                             out_batch[:, :, -n_vision_condition:, :, :] * 255.0
                         )
                     else:
-                        logger.debug("use given fixed ref_image")
+                        logger.debug("使用给定的固定 ref_image")
 
                     if not fixed_ip_adapter_image:
                         logger.debug(
-                            "ip_adapter_image use last frame of last generated out video"
+                            "ip_adapter_image 使用上一个生成视频的最后一帧"
                         )
                         ip_adapter_image = (
                             out_batch[:, :, -n_vision_condition:, :, :] * 255.0
                         )
                     else:
-                        logger.debug("use given fixed ip_adapter_image")
+                        logger.debug("使用给定的固定 ip_adapter_image")
 
                     # face image
                     if not fixed_ip_adapter_image:
                         logger.debug(
-                            "refer_face_image use last frame of last generated out video"
+                            "refer_face_image 使用上一个生成视频的最后一帧"
                         )
                         refer_face_image = (
                             out_batch[:, :, -n_vision_condition:, :, :] * 255.0
                         )
                     else:
-                        logger.debug("use given fixed ip_adapter_image")
+                        logger.debug("使用给定的固定 ip_adapter_image")
 
+            logger.debug(f"执行 pipeline 生成视频片段: {i_batch}")
             out = self.pipeline(
                 video_length=actual_video_length,  # int
                 prompt=prompt,
@@ -1271,6 +1324,7 @@ class DiffusersPipelinePredictor(object):
             if out_condition is not None:
                 out_condition.append(batch_condition)
 
+        logger.debug("合并所有视频片段")
         out_videos = np.concatenate(out_videos, axis=2)
         if need_return_videos:
             videos = np.concatenate(videos, axis=2)
@@ -1284,7 +1338,9 @@ class DiffusersPipelinePredictor(object):
                 ]
                 out_condition = [np.concatenate(x, axis=2) for x in out_condition]
         if need_hist_match:
+            logger.debug("执行直方图匹配")
             videos[:, :, 1:, :, :] = hist_match_video_bcthw(
                 videos[:, :, 1:, :, :], videos[:, :, :1, :, :], value=255.0
             )
+        logger.debug("run_pipe_video2video 执行完成")
         return out_videos, out_condition, videos

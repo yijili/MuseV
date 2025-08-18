@@ -1,3 +1,9 @@
+# -*- coding: utf-8 -*-
+"""
+IP-Adapter 加载器模块，用于加载和配置 IP-Adapter 相关组件
+该模块提供了一系列函数来加载视觉编码器、图像投影模型等 IP-Adapter 组件
+"""
+
 import copy
 from typing import Any, Callable, Dict, Iterable, Union
 import PIL
@@ -33,6 +39,7 @@ from diffusers.utils import (
 )
 from diffusers.utils.import_utils import is_xformers_available
 
+# 导入视觉特征提取器模块
 from mmcm.vision.feature_extractor import clip_vision_extractor
 from mmcm.vision.feature_extractor.clip_vision_extractor import (
     ImageClipVisionFeatureExtractor,
@@ -40,9 +47,11 @@ from mmcm.vision.feature_extractor.clip_vision_extractor import (
     VerstailSDLastHiddenState2ImageEmb,
 )
 
+# 导入 IP-Adapter 的相关组件
 from ip_adapter.resampler import Resampler
 from ip_adapter.ip_adapter import ImageProjModel
 
+# 导入 UNet 相关加载器
 from .unet_loader import update_unet_with_sd
 from .unet_3d_condition import UNet3DConditionModel
 
@@ -55,7 +64,22 @@ def load_vision_clip_encoder_by_name(
     device: str = "cuda",
     vision_clip_extractor_class_name: str = None,
 ) -> nn.Module:
+    """
+    根据名称加载视觉 CLIP 编码器
+    
+    Args:
+        ip_image_encoder (Tuple[str, nn.Module], optional): IP 图像编码器路径或模型. Defaults to None.
+        dtype (torch.dtype, optional): 模型数据类型. Defaults to torch.float16.
+        device (str, optional): 运行设备. Defaults to "cuda".
+        vision_clip_extractor_class_name (str, optional): 视觉 CLIP 提取器类名. Defaults to None.
+        
+    Returns:
+        nn.Module: 加载的视觉 CLIP 编码器模型
+    """
+    logger.info(f"开始加载视觉 CLIP 编码器: {vision_clip_extractor_class_name}")
+    
     if vision_clip_extractor_class_name is not None:
+        # 根据类名动态获取并实例化对应的视觉特征提取器
         vision_clip_extractor = getattr(
             clip_vision_extractor, vision_clip_extractor_class_name
         )(
@@ -63,8 +87,11 @@ def load_vision_clip_encoder_by_name(
             dtype=dtype,
             device=device,
         )
+        logger.info(f"成功加载视觉 CLIP 编码器类: {vision_clip_extractor_class_name}")
     else:
         vision_clip_extractor = None
+        logger.info("未指定视觉 CLIP 编码器类名，返回 None")
+        
     return vision_clip_extractor
 
 
@@ -81,18 +108,42 @@ def load_ip_adapter_image_proj_by_name(
     vision_clip_extractor_class_name: str = None,
     ip_image_encoder: Tuple[str, nn.Module] = None,
 ) -> nn.Module:
+    """
+    根据模型名称加载 IP-Adapter 图像投影模型
+    
+    Args:
+        model_name (str): 模型名称
+        ip_ckpt (Tuple[str, nn.Module], optional): IP 检查点路径或模型. Defaults to None.
+        cross_attention_dim (int, optional): 交叉注意力维度. Defaults to 768.
+        clip_embeddings_dim (int, optional): CLIP 嵌入维度. Defaults to 1024.
+        clip_extra_context_tokens (int, optional): 额外上下文标记数. Defaults to 4.
+        ip_scale (float, optional): IP 缩放因子. Defaults to 0.0.
+        dtype (torch.dtype, optional): 模型数据类型. Defaults to torch.float16.
+        device (str, optional): 运行设备. Defaults to "cuda".
+        unet (nn.Module, optional): UNet 模型. Defaults to None.
+        vision_clip_extractor_class_name (str, optional): 视觉 CLIP 提取器类名. Defaults to None.
+        ip_image_encoder (Tuple[str, nn.Module], optional): IP 图像编码器. Defaults to None.
+        
+    Returns:
+        nn.Module: 加载的 IP-Adapter 图像投影模型
+    """
+    logger.info(f"开始加载 IP-Adapter 图像投影模型: {model_name}")
+    
     if model_name in [
         "IPAdapter",
         "musev_referencenet",
         "musev_referencenet_pose",
     ]:
+        # 加载基础的 ImageProjModel
         ip_adapter_image_proj = ImageProjModel(
             cross_attention_dim=cross_attention_dim,
             clip_embeddings_dim=clip_embeddings_dim,
             clip_extra_context_tokens=clip_extra_context_tokens,
         )
+        logger.info(f"加载基础 ImageProjModel，模型名称: {model_name}")
 
     elif model_name == "IPAdapterPlus":
+        # 加载增强版的 IP-Adapter Plus 模型
         vision_clip_extractor = ImageClipVisionFeatureExtractorV2(
             pretrained_model_name_or_path=ip_image_encoder,
             dtype=dtype,
@@ -108,24 +159,36 @@ def load_ip_adapter_image_proj_by_name(
             output_dim=cross_attention_dim,
             ff_mult=4,
         )
+        logger.info("加载 IPAdapterPlus 模型")
+
     elif model_name in [
         "VerstailSDLastHiddenState2ImageEmb",
         "OriginLastHiddenState2ImageEmbd",
         "OriginLastHiddenState2Poolout",
     ]:
+        # 加载特定类型的图像嵌入模型
         ip_adapter_image_proj = getattr(
             clip_vision_extractor, model_name
         ).from_pretrained(ip_image_encoder)
+        logger.info(f"加载特定图像嵌入模型: {model_name}")
+        
     else:
-        raise ValueError(
-            f"unsupport model_name={model_name}, only support IPAdapter, IPAdapterPlus, VerstailSDLastHiddenState2ImageEmb"
-        )
+        # 不支持的模型类型
+        error_msg = f"不支持的模型名称={model_name}，仅支持 IPAdapter, IPAdapterPlus, VerstailSDLastHiddenState2ImageEmb"
+        logger.error(error_msg)
+        raise ValueError(error_msg)
+        
+    # 如果提供了检查点，则加载模型权重
     if ip_ckpt is not None:
+        logger.info(f"从检查点加载 IP-Adapter 权重: {ip_ckpt}")
         ip_adapter_state_dict = torch.load(
             ip_ckpt,
             map_location="cpu",
         )
         ip_adapter_image_proj.load_state_dict(ip_adapter_state_dict["image_proj"])
+        logger.info("成功加载 image_proj 权重")
+        
+        # 如果 UNet 支持 IP-Adapter 交叉注意力并且状态字典中包含相关参数，则更新 UNet 参数
         if (
             unet is not None
             and unet.ip_adapter_cross_attn
@@ -135,8 +198,10 @@ def load_ip_adapter_image_proj_by_name(
                 unet, ip_adapter_state_dict["ip_adapter"]
             )
             logger.info(
-                f"update unet.spatial_cross_attn_ip_adapter parameter with {ip_ckpt}"
+                f"更新 unet.spatial_cross_attn_ip_adapter 参数，使用检查点: {ip_ckpt}"
             )
+            
+    logger.info(f"完成 IP-Adapter 图像投影模型加载: {model_name}")
     return ip_adapter_image_proj
 
 
@@ -153,6 +218,28 @@ def load_ip_adapter_vision_clip_encoder_by_name(
     unet: nn.Module = None,
     vision_clip_extractor_class_name: str = None,
 ) -> nn.Module:
+    """
+    根据模型名称加载 IP-Adapter 视觉 CLIP 编码器和图像投影模型
+    
+    Args:
+        model_name (str): 模型名称
+        ip_ckpt (Tuple[str, nn.Module]): IP 检查点路径或模型
+        ip_image_encoder (Tuple[str, nn.Module], optional): IP 图像编码器. Defaults to None.
+        cross_attention_dim (int, optional): 交叉注意力维度. Defaults to 768.
+        clip_embeddings_dim (int, optional): CLIP 嵌入维度. Defaults to 1024.
+        clip_extra_context_tokens (int, optional): 额外上下文标记数. Defaults to 4.
+        ip_scale (float, optional): IP 缩放因子. Defaults to 0.0.
+        dtype (torch.dtype, optional): 模型数据类型. Defaults to torch.float16.
+        device (str, optional): 运行设备. Defaults to "cuda".
+        unet (nn.Module, optional): UNet 模型. Defaults to None.
+        vision_clip_extractor_class_name (str, optional): 视觉 CLIP 提取器类名. Defaults to None.
+        
+    Returns:
+        nn.Module: 加载的视觉 CLIP 编码器和图像投影模型元组
+    """
+    logger.info(f"开始加载 IP-Adapter 视觉 CLIP 编码器和图像投影模型: {model_name}")
+    
+    # 加载视觉 CLIP 编码器
     if vision_clip_extractor_class_name is not None:
         vision_clip_extractor = getattr(
             clip_vision_extractor, vision_clip_extractor_class_name
@@ -161,8 +248,12 @@ def load_ip_adapter_vision_clip_encoder_by_name(
             dtype=dtype,
             device=device,
         )
+        logger.info(f"加载视觉 CLIP 编码器类: {vision_clip_extractor_class_name}")
     else:
         vision_clip_extractor = None
+        logger.info("未指定视觉 CLIP 编码器类名")
+        
+    # 根据模型名称加载对应的模型组件
     if model_name in [
         "IPAdapter",
         "musev_referencenet",
@@ -174,13 +265,18 @@ def load_ip_adapter_vision_clip_encoder_by_name(
                     dtype=dtype,
                     device=device,
                 )
+                logger.info("加载 ImageClipVisionFeatureExtractor")
         else:
             vision_clip_extractor = None
+            logger.info("未提供图像编码器，设置视觉 CLIP 编码器为 None")
+            
+        # 加载基础的 ImageProjModel
         ip_adapter_image_proj = ImageProjModel(
             cross_attention_dim=cross_attention_dim,
             clip_embeddings_dim=clip_embeddings_dim,
             clip_extra_context_tokens=clip_extra_context_tokens,
         )
+        logger.info(f"加载基础 ImageProjModel，模型名称: {model_name}")
 
     elif model_name == "IPAdapterPlus":
         if ip_image_encoder is not None:
@@ -190,8 +286,12 @@ def load_ip_adapter_vision_clip_encoder_by_name(
                     dtype=dtype,
                     device=device,
                 )
+                logger.info("加载 ImageClipVisionFeatureExtractorV2")
         else:
             vision_clip_extractor = None
+            logger.info("未提供图像编码器，设置视觉 CLIP 编码器为 None")
+            
+        # 加载 Resampler 模型
         ip_adapter_image_proj = Resampler(
             dim=cross_attention_dim,
             depth=4,
@@ -202,15 +302,24 @@ def load_ip_adapter_vision_clip_encoder_by_name(
             output_dim=cross_attention_dim,
             ff_mult=4,
         ).to(dtype=torch.float16)
+        logger.info("加载 Resampler 模型")
+
     else:
-        raise ValueError(
-            f"unsupport model_name={model_name}, only support IPAdapter, IPAdapterPlus"
-        )
+        # 不支持的模型类型
+        error_msg = f"不支持的模型名称={model_name}，仅支持 IPAdapter, IPAdapterPlus"
+        logger.error(error_msg)
+        raise ValueError(error_msg)
+        
+    # 加载检查点并更新模型参数
+    logger.info(f"从检查点加载 IP-Adapter 权重: {ip_ckpt}")
     ip_adapter_state_dict = torch.load(
         ip_ckpt,
         map_location="cpu",
     )
     ip_adapter_image_proj.load_state_dict(ip_adapter_state_dict["image_proj"])
+    logger.info("成功加载 image_proj 权重")
+    
+    # 如果 UNet 支持 IP-Adapter 交叉注意力并且状态字典中包含相关参数，则更新 UNet 参数
     if (
         unet is not None
         and unet.ip_adapter_cross_attn
@@ -220,15 +329,18 @@ def load_ip_adapter_vision_clip_encoder_by_name(
             unet, ip_adapter_state_dict["ip_adapter"]
         )
         logger.info(
-            f"update unet.spatial_cross_attn_ip_adapter parameter with {ip_ckpt}"
+            f"更新 unet.spatial_cross_attn_ip_adapter 参数，使用检查点: {ip_ckpt}"
         )
+        
+    logger.info(f"完成 IP-Adapter 视觉 CLIP 编码器和图像投影模型加载: {model_name}")
     return (
         vision_clip_extractor,
         ip_adapter_image_proj,
     )
 
 
-# refer https://github.com/tencent-ailab/IP-Adapter/issues/168#issuecomment-1846771651
+# 参考 https://github.com/tencent-ailab/IP-Adapter/issues/168#issuecomment-1846771651
+# 定义 UNet 中的 IP-Adapter 相关键列表
 unet_keys_list = [
     "down_blocks.0.attentions.0.transformer_blocks.0.attn2.processor.to_k_ip.weight",
     "down_blocks.0.attentions.0.transformer_blocks.0.attn2.processor.to_v_ip.weight",
@@ -264,7 +376,7 @@ unet_keys_list = [
     "mid_block.attentions.0.transformer_blocks.0.attn2.processor.to_v_ip.weight",
 ]
 
-
+# 定义 IP-Adapter 中的键列表
 ip_adapter_keys_list = [
     "1.to_k_ip.weight",
     "1.to_v_ip.weight",
@@ -300,6 +412,7 @@ ip_adapter_keys_list = [
     "31.to_v_ip.weight",
 ]
 
+# 创建 UNet 到 IP-Adapter 键的映射字典
 UNET2IPAadapter_Keys_MAPIING = {
     k: v for k, v in zip(unet_keys_list, ip_adapter_keys_list)
 }
@@ -308,16 +421,20 @@ UNET2IPAadapter_Keys_MAPIING = {
 def update_unet_ip_adapter_cross_attn_param(
     unet: UNet3DConditionModel, ip_adapter_state_dict: Dict
 ) -> None:
-    """use independent ip_adapter attn 中的 to_k, to_v in unet
-    ip_adapter：  dict whose keys are ['1.to_k_ip.weight', '1.to_v_ip.weight', '3.to_k_ip.weight']
-
-
-    Args:
-        unet (UNet3DConditionModel): _description_
-        ip_adapter_state_dict (Dict): _description_
     """
+    使用独立的 IP-Adapter 注意力中的 to_k, to_v 参数更新 UNet
+    
+    Args:
+        unet (UNet3DConditionModel): UNet3D 条件模型
+        ip_adapter_state_dict (Dict): IP-Adapter 状态字典，键如 ['1.to_k_ip.weight', '1.to_v_ip.weight', '3.to_k_ip.weight']
+    """
+    logger.info("开始更新 UNet 的 IP-Adapter 交叉注意力参数")
+    
+    # 获取 UNet 的空间交叉注意力模块
     unet_spatial_cross_atnns = unet.spatial_cross_attns[0]
     unet_spatial_cross_atnns_dct = {k: v for k, v in unet_spatial_cross_atnns}
+    
+    # 遍历键映射，将 IP-Adapter 的参数复制到 UNet 中
     for i, (unet_key_more, ip_adapter_key) in enumerate(
         UNET2IPAadapter_Keys_MAPIING.items()
     ):
@@ -325,16 +442,23 @@ def update_unet_ip_adapter_cross_attn_param(
         unet_key_more_spit = unet_key_more.split(".")
         unet_key = ".".join(unet_key_more_spit[:-3])
         suffix = ".".join(unet_key_more_spit[-3:])
+        
         logger.debug(
-            f"{i}: unet_key_more = {unet_key_more}, {unet_key}=unet_key, suffix={suffix}",
+            f"处理第 {i} 个参数: unet_key_more = {unet_key_more}, unet_key = {unet_key}, suffix = {suffix}",
         )
+        
+        # 根据后缀判断是更新 to_k 还是 to_v 参数
         if "to_k" in suffix:
             with torch.no_grad():
                 unet_spatial_cross_atnns_dct[unet_key].to_k_ip.weight.copy_(
                     ip_adapter_value.data
                 )
+                logger.debug(f"更新 {unet_key}.to_k_ip.weight 参数")
         else:
             with torch.no_grad():
                 unet_spatial_cross_atnns_dct[unet_key].to_v_ip.weight.copy_(
                     ip_adapter_value.data
                 )
+                logger.debug(f"更新 {unet_key}.to_v_ip.weight 参数")
+                
+    logger.info("完成 UNet 的 IP-Adapter 交叉注意力参数更新")

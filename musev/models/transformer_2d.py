@@ -54,30 +54,29 @@ logger = logging.getLogger(__name__)
 
 class Transformer2DModel(DiffusersTransformer2DModel):
     """
-    A 2D Transformer model for image-like data.
+    用于图像类数据的2D Transformer模型。
 
-    Parameters:
-        num_attention_heads (`int`, *optional*, defaults to 16): The number of heads to use for multi-head attention.
-        attention_head_dim (`int`, *optional*, defaults to 88): The number of channels in each head.
-        in_channels (`int`, *optional*):
-            The number of channels in the input and output (specify if the input is **continuous**).
-        num_layers (`int`, *optional*, defaults to 1): The number of layers of Transformer blocks to use.
-        dropout (`float`, *optional*, defaults to 0.0): The dropout probability to use.
-        cross_attention_dim (`int`, *optional*): The number of `encoder_hidden_states` dimensions to use.
-        sample_size (`int`, *optional*): The width of the latent images (specify if the input is **discrete**).
-            This is fixed during training since it is used to learn a number of position embeddings.
-        num_vector_embeds (`int`, *optional*):
-            The number of classes of the vector embeddings of the latent pixels (specify if the input is **discrete**).
-            Includes the class for the masked latent pixel.
-        activation_fn (`str`, *optional*, defaults to `"geglu"`): Activation function to use in feed-forward.
-        num_embeds_ada_norm ( `int`, *optional*):
-            The number of diffusion steps used during training. Pass if at least one of the norm_layers is
-            `AdaLayerNorm`. This is fixed during training since it is used to learn a number of embeddings that are
-            added to the hidden states.
+    参数:
+        num_attention_heads (`int`, *可选*, 默认为 16): 多头注意力机制中使用的头数。
+        attention_head_dim (`int`, *可选*, 默认为 88): 每个注意力头的通道数。
+        in_channels (`int`, *可选*):
+            输入和输出的通道数（如果输入是**连续的**）。
+        num_layers (`int`, *可选*, 默认为 1): Transformer块的层数。
+        dropout (`float`, *可选*, 默认为 0.0): 使用的dropout概率。
+        cross_attention_dim (`int`, *可选*): `encoder_hidden_states`维度数。
+        sample_size (`int`, *可选*): 潜在图像的宽度（如果输入是**离散的**）。
+            在训练期间是固定的，因为它用于学习位置嵌入的数量。
+        num_vector_embeds (`int`, *可选*):
+            潜在像素向量嵌入的类别数（如果输入是**离散的**）。
+            包括被遮罩的潜在像素类别。
+        activation_fn (`str`, *可选*, 默认为 `"geglu"`): 前馈网络中使用的激活函数。
+        num_embeds_ada_norm ( `int`, *可选*):
+            训练期间使用的扩散步骤数。如果至少一个归一化层是
+            `AdaLayerNorm`，则需要传递此参数。在训练期间是固定的，因为它用于学习添加到隐藏状态的嵌入数量。
 
-            During inference, you can denoise for up to but not more steps than `num_embeds_ada_norm`.
-        attention_bias (`bool`, *optional*):
-            Configure if the `TransformerBlocks` attention should contain a bias parameter.
+            在推理过程中，您可以去噪的步数不超过但不能多于`num_embeds_ada_norm`。
+        attention_bias (`bool`, *可选*):
+            配置`TransformerBlocks`注意力是否应包含偏置参数。
     """
 
     @register_to_config
@@ -110,6 +109,38 @@ class Transformer2DModel(DiffusersTransformer2DModel):
         need_t2i_ip_adapter_face: bool = False,
         image_scale: float = 1.0,
     ):
+        """
+        初始化Transformer2DModel
+        
+        参数说明:
+            num_attention_heads: 注意力头的数量
+            attention_head_dim: 每个注意力头的维度
+            in_channels: 输入通道数
+            out_channels: 输出通道数
+            num_layers: Transformer块的层数
+            dropout: Dropout比率
+            norm_num_groups: 归一化组数
+            cross_attention_dim: 交叉注意力的维度
+            attention_bias: 是否使用注意力偏置
+            sample_size: 样本大小
+            num_vector_embeds: 向量嵌入的数量
+            patch_size: 补丁大小
+            activation_fn: 激活函数类型
+            num_embeds_ada_norm: AdaLayerNorm的嵌入数量
+            use_linear_projection: 是否使用线性投影
+            only_cross_attention: 是否仅使用交叉注意力
+            double_self_attention: 是否使用双重自注意力
+            upcast_attention: 是否上转换注意力
+            norm_type: 归一化类型
+            norm_elementwise_affine: 是否元素级仿射变换
+            attention_type: 注意力类型
+            cross_attn_temporal_cond: 是否使用交叉注意力时间条件
+            ip_adapter_cross_attn: 是否使用IP适配器交叉注意力
+            need_t2i_facein: 是否需要T2I FaceIn
+            need_t2i_ip_adapter_face: 是否需要T2I IP适配器Face
+            image_scale: 图像缩放因子
+        """
+        logger.debug("初始化Transformer2DModel")
         super().__init__(
             num_attention_heads,
             attention_head_dim,
@@ -134,6 +165,7 @@ class Transformer2DModel(DiffusersTransformer2DModel):
             attention_type,
         )
         inner_dim = num_attention_heads * attention_head_dim
+        logger.info(f"创建{num_layers}个BasicTransformerBlock")
         self.transformer_blocks = nn.ModuleList(
             [
                 BasicTransformerBlock(
@@ -168,6 +200,7 @@ class Transformer2DModel(DiffusersTransformer2DModel):
         self.need_t2i_ip_adapter_face = need_t2i_ip_adapter_face
         self.image_scale = image_scale
         self.print_idx = 0
+        logger.debug("Transformer2DModel初始化完成")
 
     def forward(
         self,
@@ -184,82 +217,83 @@ class Transformer2DModel(DiffusersTransformer2DModel):
         return_dict: bool = True,
     ):
         """
-        The [`Transformer2DModel`] forward method.
+        Transformer2DModel 的前向传播方法。
 
-        Args:
+        参数:
             hidden_states (`torch.LongTensor` of shape `(batch size, num latent pixels)` if discrete, `torch.FloatTensor` of shape `(batch size, channel, height, width)` if continuous):
-                Input `hidden_states`.
+                输入 `hidden_states`。
             encoder_hidden_states ( `torch.FloatTensor` of shape `(batch size, sequence len, embed dims)`, *optional*):
-                Conditional embeddings for cross attention layer. If not given, cross-attention defaults to
-                self-attention.
+                交叉注意力层的条件嵌入。如果未提供，则交叉注意力默认为自注意力。
             timestep ( `torch.LongTensor`, *optional*):
-                Used to indicate denoising step. Optional timestep to be applied as an embedding in `AdaLayerNorm`.
+                用于指示去噪步骤。可选的时间步长作为嵌入应用于 `AdaLayerNorm`。
             class_labels ( `torch.LongTensor` of shape `(batch size, num classes)`, *optional*):
-                Used to indicate class labels conditioning. Optional class labels to be applied as an embedding in
-                `AdaLayerZeroNorm`.
+                用于指示类别标签条件。可选的类别标签作为嵌入应用于 `AdaLayerZeroNorm`。
             cross_attention_kwargs ( `Dict[str, Any]`, *optional*):
-                A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
-                `self.processor` in
-                [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
+                如果指定，则传递给 `AttentionProcessor` 的 kwargs 字典，定义在
+                diffusers.models.attention_processor https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py 中的 `self.processor` 下。
             attention_mask ( `torch.Tensor`, *optional*):
-                An attention mask of shape `(batch, key_tokens)` is applied to `encoder_hidden_states`. If `1` the mask
-                is kept, otherwise if `0` it is discarded. Mask will be converted into a bias, which adds large
-                negative values to the attention scores corresponding to "discard" tokens.
+                形状为 `(batch, key_tokens)` 的注意力掩码应用于 `encoder_hidden_states`。如果为 `1` 则保留掩码，
+                否则如果为 `0` 则丢弃。掩码将被转换为偏置，这会将大的负值添加到与"丢弃"标记对应的注意力分数中。
             encoder_attention_mask ( `torch.Tensor`, *optional*):
-                Cross-attention mask applied to `encoder_hidden_states`. Two formats supported:
+                应用于 `encoder_hidden_states` 的交叉注意力掩码。支持两种格式：
 
-                    * Mask `(batch, sequence_length)` True = keep, False = discard.
-                    * Bias `(batch, 1, sequence_length)` 0 = keep, -10000 = discard.
+                    * 掩码 `(batch, sequence_length)` True = 保留, False = 丢弃。
+                    * 偏置 `(batch, 1, sequence_length)` 0 = 保留, -10000 = 丢弃。
 
-                If `ndim == 2`: will be interpreted as a mask, then converted into a bias consistent with the format
-                above. This bias will be added to the cross-attention scores.
-            return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~models.unet_2d_condition.UNet2DConditionOutput`] instead of a plain
-                tuple.
+                如果 `ndim == 2`: 将被解释为掩码，然后转换为与上述格式一致的偏置。此偏置将被添加到交叉注意力分数中。
+            return_dict (`bool`, *optional*, 默认为 `True`):
+                是否返回 [`~models.unet_2d_condition.UNet2DConditionOutput`] 而不是普通元组。
 
-        Returns:
-            If `return_dict` is True, an [`~models.transformer_2d.Transformer2DModelOutput`] is returned, otherwise a
-            `tuple` where the first element is the sample tensor.
+        返回:
+            如果 `return_dict` 为 True，则返回 [`~models.transformer_2d.Transformer2DModelOutput`]，否则返回
+            第一个元素为样本张量的 `tuple`。
         """
-        # ensure attention_mask is a bias, and give it a singleton query_tokens dimension.
-        #   we may have done this conversion already, e.g. if we came here via UNet2DConditionModel#forward.
-        #   we can tell by counting dims; if ndim == 2: it's a mask rather than a bias.
-        # expects mask of shape:
+        logger.debug(f"Transformer2DModel前向传播开始，输入hidden_states形状: {hidden_states.shape}")
+        
+        # 确保 attention_mask 是偏置，并给它一个单例 query_tokens 维度。
+        #   我们可能已经完成了这个转换，例如如果我们通过 UNet2DConditionModel#forward 到达这里。
+        #   我们可以通过计算维度来判断；如果 ndim == 2: 它是掩码而不是偏置。
+        # 期望的掩码形状：
         #   [batch, key_tokens]
-        # adds singleton query_tokens dimension:
+        # 添加单例 query_tokens 维度：
         #   [batch,                    1, key_tokens]
-        # this helps to broadcast it as a bias over attention scores, which will be in one of the following shapes:
-        #   [batch,  heads, query_tokens, key_tokens] (e.g. torch sdp attn)
-        #   [batch * heads, query_tokens, key_tokens] (e.g. xformers or classic attn)
+        # 这有助于将其作为偏置广播到注意力分数上，注意力分数将采用以下形状之一：
+        #   [batch,  heads, query_tokens, key_tokens] (例如 torch sdp attn)
+        #   [batch * heads, query_tokens, key_tokens] (例如 xformers 或经典 attn)
         if attention_mask is not None and attention_mask.ndim == 2:
-            # assume that mask is expressed as:
-            #   (1 = keep,      0 = discard)
-            # convert mask into a bias that can be added to attention scores:
-            #       (keep = +0,     discard = -10000.0)
+            # 假设掩码表示为：
+            #   (1 = 保留,      0 = 丢弃)
+            # 将掩码转换为可以添加到注意力分数的偏置：
+            #       (保留 = +0,     丢弃 = -10000.0)
+            logger.debug("处理attention_mask")
             attention_mask = (1 - attention_mask.to(hidden_states.dtype)) * -10000.0
             attention_mask = attention_mask.unsqueeze(1)
 
-        # convert encoder_attention_mask to a bias the same way we do for attention_mask
+        # 以与处理 attention_mask 相同的方式将 encoder_attention_mask 转换为偏置
         if encoder_attention_mask is not None and encoder_attention_mask.ndim == 2:
+            logger.debug("处理encoder_attention_mask")
             encoder_attention_mask = (
                 1 - encoder_attention_mask.to(hidden_states.dtype)
             ) * -10000.0
             encoder_attention_mask = encoder_attention_mask.unsqueeze(1)
 
-        # Retrieve lora scale.
+        # 检索 lora 缩放因子。
         lora_scale = (
             cross_attention_kwargs.get("scale", 1.0)
             if cross_attention_kwargs is not None
             else 1.0
         )
+        logger.debug(f"获取lora_scale: {lora_scale}")
 
-        # 1. Input
+        # 1. 输入处理
         if self.is_input_continuous:
+            logger.debug("处理连续输入")
             batch, _, height, width = hidden_states.shape
             residual = hidden_states
 
             hidden_states = self.norm(hidden_states)
             if not self.use_linear_projection:
+                logger.debug("使用非线性投影")
                 hidden_states = (
                     self.proj_in(hidden_states, scale=lora_scale)
                     if not USE_PEFT_BACKEND
@@ -270,6 +304,7 @@ class Transformer2DModel(DiffusersTransformer2DModel):
                     batch, height * width, inner_dim
                 )
             else:
+                logger.debug("使用线性投影")
                 inner_dim = hidden_states.shape[1]
                 hidden_states = hidden_states.permute(0, 2, 3, 1).reshape(
                     batch, height * width, inner_dim
@@ -281,8 +316,10 @@ class Transformer2DModel(DiffusersTransformer2DModel):
                 )
 
         elif self.is_input_vectorized:
+            logger.debug("处理向量化输入")
             hidden_states = self.latent_image_embedding(hidden_states)
         elif self.is_input_patches:
+            logger.debug("处理补丁输入")
             height, width = (
                 hidden_states.shape[-2] // self.patch_size,
                 hidden_states.shape[-1] // self.patch_size,
@@ -302,16 +339,20 @@ class Transformer2DModel(DiffusersTransformer2DModel):
                     hidden_dtype=hidden_states.dtype,
                 )
 
-        # 2. Blocks
+        # 2. 块处理
         if self.caption_projection is not None:
+            logger.debug("处理caption_projection")
             batch_size = hidden_states.shape[0]
             encoder_hidden_states = self.caption_projection(encoder_hidden_states)
             encoder_hidden_states = encoder_hidden_states.view(
                 batch_size, -1, hidden_states.shape[-1]
             )
 
-        for block in self.transformer_blocks:
+        logger.debug(f"开始处理{len(self.transformer_blocks)}个transformer块")
+        for i, block in enumerate(self.transformer_blocks):
+            logger.debug(f"处理第{i}个transformer块")
             if self.training and self.gradient_checkpointing:
+                logger.debug("使用梯度检查点")
                 hidden_states = torch.utils.checkpoint.checkpoint(
                     block,
                     hidden_states,
@@ -359,10 +400,12 @@ class Transformer2DModel(DiffusersTransformer2DModel):
                     )
 
         if self.proj_out is None:
+            logger.debug("proj_out为None，直接返回hidden_states")
             return hidden_states
 
-        # 3. Output
+        # 3. 输出处理
         if self.is_input_continuous:
+            logger.debug("处理连续输出")
             if not self.use_linear_projection:
                 hidden_states = (
                     hidden_states.reshape(batch, height, width, inner_dim)
@@ -388,6 +431,7 @@ class Transformer2DModel(DiffusersTransformer2DModel):
 
             output = hidden_states + residual
         elif self.is_input_vectorized:
+            logger.debug("处理向量化输出")
             hidden_states = self.norm_out(hidden_states)
             logits = self.out(hidden_states)
             # (batch, self.num_vector_embeds - 1, self.num_latent_pixels)
@@ -397,6 +441,7 @@ class Transformer2DModel(DiffusersTransformer2DModel):
             output = F.log_softmax(logits.double(), dim=1).float()
 
         if self.is_input_patches:
+            logger.debug("处理补丁输出")
             if self.config.norm_type != "ada_norm_single":
                 conditioning = self.transformer_blocks[0].norm1.emb(
                     timestep, class_labels, hidden_dtype=hidden_states.dtype
@@ -439,7 +484,10 @@ class Transformer2DModel(DiffusersTransformer2DModel):
                 )
             )
         self.print_idx += 1
+        logger.debug(f"前向传播完成，输出形状: {output.shape}")
         if not return_dict:
+            logger.debug("以元组形式返回结果")
             return (output,)
 
+        logger.debug("以Transformer2DModelOutput形式返回结果")
         return Transformer2DModelOutput(sample=output)

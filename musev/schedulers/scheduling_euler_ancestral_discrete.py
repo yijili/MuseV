@@ -2,7 +2,7 @@
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
+# You are may obtain a copy of the License at
 #
 #     http://www.apache.org/licenses/LICENSE-2.0
 #
@@ -42,15 +42,13 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 # Copied from diffusers.schedulers.scheduling_ddpm.DDPMSchedulerOutput with DDPM->EulerAncestralDiscrete
 class EulerAncestralDiscreteSchedulerOutput(BaseOutput):
     """
-    Output class for the scheduler's step function output.
+    调度器步进函数输出的输出类。
 
     Args:
         prev_sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)` for images):
-            Computed sample (x_{t-1}) of previous timestep. `prev_sample` should be used as next model input in the
-            denoising loop.
+            前一个时间步计算得到的样本 (x_{t-1})。在去噪循环中，`prev_sample` 应该被用作下一个模型输入。
         pred_original_sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)` for images):
-            The predicted denoised sample (x_{0}) based on the model output from the current timestep.
-            `pred_original_sample` can be used to preview progress or for guidance.
+            基于当前时间步模型输出预测的去噪样本 (x_{0})。`pred_original_sample` 可用于预览进度或进行引导。
     """
 
     prev_sample: torch.FloatTensor
@@ -60,20 +58,16 @@ class EulerAncestralDiscreteSchedulerOutput(BaseOutput):
 # Copied from diffusers.schedulers.scheduling_ddpm.betas_for_alpha_bar
 def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999) -> torch.Tensor:
     """
-    Create a beta schedule that discretizes the given alpha_t_bar function, which defines the cumulative product of
-    (1-beta) over time from t = [0,1].
+    创建一个 beta 调度，将给定的 alpha_t_bar 函数离散化，该函数定义了 (1-beta) 从 t = [0,1] 的累积乘积。
 
-    Contains a function alpha_bar that takes an argument t and transforms it to the cumulative product of (1-beta) up
-    to that part of the diffusion process.
-
+    包含一个 alpha_bar 函数，它接受参数 t 并将其转换为 (1-beta) 到该扩散过程部分的累积乘积。
 
     Args:
-        num_diffusion_timesteps (`int`): the number of betas to produce.
-        max_beta (`float`): the maximum beta to use; use values lower than 1 to
-                     prevent singularities.
+        num_diffusion_timesteps (`int`): 要生成的 betas 数量。
+        max_beta (`float`): 要使用的最大 beta；使用小于 1 的值来防止奇点。
 
     Returns:
-        betas (`np.ndarray`): the betas used by the scheduler to step the model outputs
+        betas (`np.ndarray`): 调度器用于步进模型输出的 betas
     """
 
     def alpha_bar(time_step):
@@ -89,28 +83,25 @@ def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999) -> torch.Tensor
 
 class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
     """
-    Ancestral sampling with Euler method steps. Based on the original k-diffusion implementation by Katherine Crowson:
+    使用欧拉方法步进的祖先采样。基于 Katherine Crowson 的原始 k-diffusion 实现：
     https://github.com/crowsonkb/k-diffusion/blob/481677d114f6ea445aa009cf5bd7a9cdee909e47/k_diffusion/sampling.py#L72
 
-    [`~ConfigMixin`] takes care of storing all config attributes that are passed in the scheduler's `__init__`
-    function, such as `num_train_timesteps`. They can be accessed via `scheduler.config.num_train_timesteps`.
-    [`SchedulerMixin`] provides general loading and saving functionality via the [`SchedulerMixin.save_pretrained`] and
-    [`~SchedulerMixin.from_pretrained`] functions.
+    [`~ConfigMixin`] 负责存储所有在调度器的 [__init__](file://e:\AI\muse\MuseV-main\musev\schedulers\scheduling_euler_ancestral_discrete.py#L119-L169) 函数中传递的配置属性，例如 `num_train_timesteps`。
+    它们可以通过 `scheduler.config.num_train_timesteps` 访问。
+    [`SchedulerMixin`] 通过 [`SchedulerMixin.save_pretrained`] 和 [`~SchedulerMixin.from_pretrained`] 
+    函数提供通用的加载和保存功能。
 
     Args:
-        num_train_timesteps (`int`): number of diffusion steps used to train the model.
-        beta_start (`float`): the starting `beta` value of inference.
-        beta_end (`float`): the final `beta` value.
+        num_train_timesteps (`int`): 用于训练模型的扩散步数。
+        beta_start (`float`): 推理的起始 `beta` 值。
+        beta_end (`float`): 最终的 `beta` 值。
         beta_schedule (`str`):
-            the beta schedule, a mapping from a beta range to a sequence of betas for stepping the model. Choose from
-            `linear` or `scaled_linear`.
+            beta 调度，是从 beta 范围到用于步进模型的 beta 序列的映射。可选 `linear` 或 `scaled_linear`。
         trained_betas (`np.ndarray`, optional):
-            option to pass an array of betas directly to the constructor to bypass `beta_start`, `beta_end` etc.
+            直接传递 betas 数组给构造函数以绕过 `beta_start`、`beta_end` 等的选项。
         prediction_type (`str`, default `epsilon`, optional):
-            prediction type of the scheduler function, one of `epsilon` (predicting the noise of the diffusion
-            process), `sample` (directly predicting the noisy sample`) or `v_prediction` (see section 2.4
-            https://imagen.research.google/video/paper.pdf)
-
+            调度器函数的预测类型，可以是 `epsilon`（预测扩散过程的噪声）、`sample`（直接预测噪声样本）
+            或 `v_prediction`（参见第 2.4 节 https://imagen.research.google/video/paper.pdf）
     """
 
     _compatibles = [e.name for e in KarrasDiffusionSchedulers]
@@ -126,14 +117,29 @@ class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
         trained_betas: Optional[Union[np.ndarray, List[float]]] = None,
         prediction_type: str = "epsilon",
     ):
+        """
+        初始化 EulerAncestralDiscreteScheduler 实例
+        
+        Args:
+            num_train_timesteps (int): 训练时的时间步数
+            beta_start (float): beta 起始值
+            beta_end (float): beta 结束值
+            beta_schedule (str): beta 调度类型
+            trained_betas (Optional[Union[np.ndarray, List[float]]]): 预训练的 betas
+            prediction_type (str): 预测类型
+        """
+        logger.info(f"初始化 EulerAncestralDiscreteScheduler，时间步数: {num_train_timesteps}，beta 调度: {beta_schedule}，预测类型: {prediction_type}")
+        
         if trained_betas is not None:
             self.betas = torch.tensor(trained_betas, dtype=torch.float32)
+            logger.debug("使用预训练的 betas")
         elif beta_schedule == "linear":
             self.betas = torch.linspace(
                 beta_start, beta_end, num_train_timesteps, dtype=torch.float32
             )
+            logger.debug("使用线性 beta 调度")
         elif beta_schedule == "scaled_linear":
-            # this schedule is very specific to the latent diffusion model.
+            # 这个调度专门用于潜在扩散模型
             self.betas = (
                 torch.linspace(
                     beta_start**0.5,
@@ -143,9 +149,11 @@ class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
                 )
                 ** 2
             )
+            logger.debug("使用缩放线性 beta 调度")
         elif beta_schedule == "squaredcos_cap_v2":
-            # Glide cosine schedule
+            # Glide 余弦调度
             self.betas = betas_for_alpha_bar(num_train_timesteps)
+            logger.debug("使用 squaredcos_cap_v2 (Glide 余弦) beta 调度")
         else:
             raise NotImplementedError(
                 f"{beta_schedule} does is not implemented for {self.__class__}"
@@ -158,10 +166,10 @@ class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
         sigmas = np.concatenate([sigmas[::-1], [0.0]]).astype(np.float32)
         self.sigmas = torch.from_numpy(sigmas)
 
-        # standard deviation of the initial noise distribution
+        # 初始噪声分布的标准差
         self.init_noise_sigma = self.sigmas.max()
 
-        # setable values
+        # 可设置的值
         self.num_inference_steps = None
         timesteps = np.linspace(
             0, num_train_timesteps - 1, num_train_timesteps, dtype=float
@@ -173,35 +181,40 @@ class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self, sample: torch.FloatTensor, timestep: Union[float, torch.FloatTensor]
     ) -> torch.FloatTensor:
         """
-        Scales the denoising model input by `(sigma**2 + 1) ** 0.5` to match the Euler algorithm.
+        通过 `(sigma**2 + 1) ** 0.5` 缩放去噪模型输入以匹配欧拉算法。
 
         Args:
-            sample (`torch.FloatTensor`): input sample
-            timestep (`float` or `torch.FloatTensor`): the current timestep in the diffusion chain
+            sample (`torch.FloatTensor`): 输入样本
+            timestep (`float` or `torch.FloatTensor`): 扩散链中的当前时间步
 
         Returns:
-            `torch.FloatTensor`: scaled input sample
+            `torch.FloatTensor`: 缩放后的输入样本
         """
+        logger.debug(f"对模型输入进行缩放，时间步: {timestep}")
+        
         if isinstance(timestep, torch.Tensor):
             timestep = timestep.to(self.timesteps.device)
         step_index = (self.timesteps == timestep).nonzero().item()
         sigma = self.sigmas[step_index]
         sample = sample / ((sigma**2 + 1) ** 0.5)
         self.is_scale_input_called = True
+        logger.debug(f"输入缩放完成，sigma: {sigma}")
         return sample
 
     def set_timesteps(
         self, num_inference_steps: int, device: Union[str, torch.device] = None
     ):
         """
-        Sets the timesteps used for the diffusion chain. Supporting function to be run before inference.
+        设置用于扩散链的时间步。在推理前运行的辅助函数。
 
         Args:
             num_inference_steps (`int`):
-                the number of diffusion steps used when generating samples with a pre-trained model.
+                使用预训练模型生成样本时使用的扩散步数。
             device (`str` or `torch.device`, optional):
-                the device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
+                时间步应移动到的设备。如果为 `None`，则不移动时间步。
         """
+        logger.info(f"设置推理时间步数: {num_inference_steps}，设备: {device}")
+        
         self.num_inference_steps = num_inference_steps
 
         timesteps = np.linspace(
@@ -212,10 +225,11 @@ class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
         sigmas = np.concatenate([sigmas, [0.0]]).astype(np.float32)
         self.sigmas = torch.from_numpy(sigmas).to(device=device)
         if str(device).startswith("mps"):
-            # mps does not support float64
+            # mps 不支持 float64
             self.timesteps = torch.from_numpy(timesteps).to(device, dtype=torch.float32)
         else:
             self.timesteps = torch.from_numpy(timesteps).to(device=device)
+        logger.debug(f"时间步设置完成，实际时间步数: {len(self.timesteps)}")
 
     def step(
         self,
@@ -228,23 +242,22 @@ class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
         noise_type: str = "random",
     ) -> Union[EulerAncestralDiscreteSchedulerOutput, Tuple]:
         """
-        Predict the sample at the previous timestep by reversing the SDE. Core function to propagate the diffusion
-        process from the learned model outputs (most often the predicted noise).
+        通过反转 SDE 预测前一个时间步的样本。这是根据学习到的模型输出（通常是最预测的噪声）传播扩散过程的核心函数。
 
         Args:
-            model_output (`torch.FloatTensor`): direct output from learned diffusion model.
-            timestep (`float`): current timestep in the diffusion chain.
+            model_output (`torch.FloatTensor`): 来自学习的扩散模型的直接输出。
+            timestep (`float`): 扩散链中的当前时间步。
             sample (`torch.FloatTensor`):
-                current instance of sample being created by diffusion process.
-            generator (`torch.Generator`, optional): Random number generator.
-            return_dict (`bool`): option for returning tuple rather than EulerAncestralDiscreteSchedulerOutput class
+                正在通过扩散过程创建的样本的当前实例。
+            generator (`torch.Generator`, optional): 随机数生成器。
+            return_dict (`bool`): 返回元组而不是 EulerAncestralDiscreteSchedulerOutput 类的选项
 
         Returns:
-            [`~schedulers.scheduling_utils.EulerAncestralDiscreteSchedulerOutput`] or `tuple`:
-            [`~schedulers.scheduling_utils.EulerAncestralDiscreteSchedulerOutput`] if `return_dict` is True, otherwise
-            a `tuple`. When returning a tuple, the first element is the sample tensor.
-
+            [`~schedulers.scheduling_utils.EulerAncestralDiscreteSchedulerOutput`] 或 `tuple`:
+            如果 `return_dict` 为 True，则返回 [`~schedulers.scheduling_utils.EulerAncestralDiscreteSchedulerOutput`]，否则返回 `tuple`。
+            当返回元组时，第一个元素是样本张量。
         """
+        logger.debug(f"执行调度器步进，时间步: {timestep}，噪声类型: {noise_type}")
 
         if (
             isinstance(timestep, int)
@@ -254,14 +267,14 @@ class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
             raise ValueError(
                 (
                     "Passing integer indices (e.g. from `enumerate(timesteps)`) as timesteps to"
-                    " `EulerDiscreteScheduler.step()` is not supported. Make sure to pass"
+                    " EulerDiscreteScheduler.step() is not supported. Make sure to pass"
                     " one of the `scheduler.timesteps` as a timestep."
                 ),
             )
 
         if not self.is_scale_input_called:
             logger.warning(
-                "The `scale_model_input` function should be called before `step` to ensure correct denoising. "
+                "The [scale_model_input](file://e:\AI\muse\MuseV-main\musev\schedulers\scheduling_euler_ancestral_discrete.py#L171-L190) function should be called before [step](file://e:\AI\muse\MuseV-main\musev\schedulers\scheduling_euler_ancestral_discrete.py#L219-L322) to ensure correct denoising. "
                 "See `StableDiffusionPipeline` for a usage example."
             )
 
@@ -271,14 +284,16 @@ class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
         step_index = (self.timesteps == timestep).nonzero().item()
         sigma = self.sigmas[step_index]
 
-        # 1. compute predicted original sample (x_0) from sigma-scaled predicted noise
+        # 1. 从 sigma 缩放的预测噪声计算预测的原始样本 (x_0)
         if self.config.prediction_type == "epsilon":
             pred_original_sample = sample - sigma * model_output
+            logger.debug("使用 epsilon 预测类型计算原始样本")
         elif self.config.prediction_type == "v_prediction":
             # * c_out + input * c_skip
             pred_original_sample = model_output * (-sigma / (sigma**2 + 1) ** 0.5) + (
                 sample / (sigma**2 + 1)
             )
+            logger.debug("使用 v_prediction 预测类型计算原始样本")
         elif self.config.prediction_type == "sample":
             raise NotImplementedError("prediction_type not implemented yet: sample")
         else:
@@ -293,7 +308,7 @@ class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
         ) ** 0.5
         sigma_down = (sigma_to**2 - sigma_up**2) ** 0.5
 
-        # 2. Convert to an ODE derivative
+        # 2. 转换为 ODE 导数
         derivative = (sample - pred_original_sample) / sigma
 
         dt = sigma_down - sigma
@@ -308,16 +323,20 @@ class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
                 device=device,
                 generator=generator,
             )
+            logger.debug("使用随机噪声")
         elif noise_type == "video_fusion":
             noise = video_fusion_noise(
                 model_output, w_ind_noise=w_ind_noise, generator=generator
             )
+            logger.debug(f"使用视频融合噪声，权重: {w_ind_noise}")
 
         prev_sample = prev_sample + noise * sigma_up
 
         if not return_dict:
+            logger.debug("返回元组格式结果")
             return (prev_sample,)
 
+        logger.debug("返回 EulerAncestralDiscreteSchedulerOutput 格式结果")
         return EulerAncestralDiscreteSchedulerOutput(
             prev_sample=prev_sample, pred_original_sample=pred_original_sample
         )
@@ -329,12 +348,25 @@ class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
         noise: torch.FloatTensor,
         timesteps: torch.FloatTensor,
     ) -> torch.FloatTensor:
-        # Make sure sigmas and timesteps have the same device and dtype as original_samples
+        """
+        向原始样本添加噪声
+        
+        Args:
+            original_samples: 原始样本
+            noise: 噪声
+            timesteps: 时间步
+            
+        Returns:
+            添加噪声后的样本
+        """
+        logger.debug(f"向样本添加噪声，时间步: {timesteps}")
+        
+        # 确保 sigmas 和 timesteps 与 original_samples 具有相同的设备和数据类型
         sigmas = self.sigmas.to(
             device=original_samples.device, dtype=original_samples.dtype
         )
         if original_samples.device.type == "mps" and torch.is_floating_point(timesteps):
-            # mps does not support float64
+            # mps 不支持 float64
             schedule_timesteps = self.timesteps.to(
                 original_samples.device, dtype=torch.float32
             )
@@ -350,7 +382,14 @@ class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
             sigma = sigma.unsqueeze(-1)
 
         noisy_samples = original_samples + noise * sigma
+        logger.debug("噪声添加完成")
         return noisy_samples
 
     def __len__(self):
+        """
+        返回训练时间步数
+        
+        Returns:
+            int: 训练时间步数
+        """
         return self.config.num_train_timesteps

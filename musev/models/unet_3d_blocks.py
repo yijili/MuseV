@@ -37,13 +37,13 @@ logger = logging.getLogger(__name__)
 
 # 注：
 #   (1) 原代码的`use_linear_projection`默认值均为True，与2D-SD模型不符，load时报错。因此均改为False
-#   (2) 原代码调用`Transformer2DModel`的输入参数顺序为n_channels // attn_num_head_channels, attn_num_head_channels,
+#   (2) 原代码调用[Transformer2DModel](file://e:\AI\muse\MuseV-main\musev\models\transformer_2d.py#L54-L492)的输入参数顺序为n_channels // attn_num_head_channels, attn_num_head_channels,
 #       与2D-SD模型不符。因此把顺序交换
 #   (3) 增加了temporal attention用的frame embedding输入
 
 # note:
 # 1. The default value of `use_linear_projection` in the original code is True, which is inconsistent with the 2D-SD model and causes an error when loading. Therefore, it is changed to False.
-# 2. The original code calls `Transformer2DModel` with the input parameter order of n_channels // attn_num_head_channels, attn_num_head_channels, which is inconsistent with the 2D-SD model. Therefore, the order is reversed.
+# 2. The original code calls [Transformer2DModel](file://e:\AI\muse\MuseV-main\musev\models\transformer_2d.py#L54-L492) with the input parameter order of n_channels // attn_num_head_channels, attn_num_head_channels, which is inconsistent with the 2D-SD model. Therefore, the order is reversed.
 # 3. Added the frame embedding input used by the temporal attention
 
 
@@ -77,10 +77,12 @@ def get_down_block(
     resnet_2d_skip_time_act: bool = False,
     need_refer_emb: bool = False,
 ):
+    logger.debug(f"调用 get_down_block 函数，参数: down_block_type={down_block_type}, num_layers={num_layers}, in_channels={in_channels}, out_channels={out_channels}")
     if (isinstance(down_block_type, str) and down_block_type == "DownBlock3D") or (
         isinstance(down_block_type, nn.Module)
         and down_block_type.__name__ == "DownBlock3D"
     ):
+        logger.debug("创建 DownBlock3D 实例")
         return DownBlock3D(
             num_layers=num_layers,
             in_channels=in_channels,
@@ -109,6 +111,7 @@ def get_down_block(
             raise ValueError(
                 "cross_attention_dim must be specified for CrossAttnDownBlock3D"
             )
+        logger.debug("创建 CrossAttnDownBlock3D 实例")
         return CrossAttnDownBlock3D(
             num_layers=num_layers,
             in_channels=in_channels,
@@ -170,9 +173,11 @@ def get_up_block(
     need_adain_temporal_cond: bool = False,
     resnet_2d_skip_time_act: bool = False,
 ):
+    logger.debug(f"调用 get_up_block 函数，参数: up_block_type={up_block_type}, num_layers={num_layers}, in_channels={in_channels}, out_channels={out_channels}")
     if (isinstance(up_block_type, str) and up_block_type == "UpBlock3D") or (
         isinstance(up_block_type, nn.Module) and up_block_type.__name__ == "UpBlock3D"
     ):
+        logger.debug("创建 UpBlock3D 实例")
         return UpBlock3D(
             num_layers=num_layers,
             in_channels=in_channels,
@@ -197,6 +202,7 @@ def get_up_block(
             raise ValueError(
                 "cross_attention_dim must be specified for CrossAttnUpBlock3D"
             )
+        logger.debug("创建 CrossAttnUpBlock3D 实例")
         return CrossAttnUpBlock3D(
             num_layers=num_layers,
             in_channels=in_channels,
@@ -260,6 +266,7 @@ class UNetMidBlock3DCrossAttn(nn.Module):
         resnet_2d_skip_time_act: bool = False,
     ):
         super().__init__()
+        logger.debug(f"初始化 UNetMidBlock3DCrossAttn，参数: in_channels={in_channels}, temb_channels={temb_channels}")
 
         self.has_cross_attention = True
         self.attn_num_head_channels = attn_num_head_channels
@@ -376,7 +383,9 @@ class UNetMidBlock3DCrossAttn(nn.Module):
         refer_self_attn_emb: List[torch.Tensor] = None,
         refer_self_attn_emb_mode: Literal["read", "write"] = "read",
     ):
+        logger.debug(f"UNetMidBlock3DCrossAttn forward 调用，num_frames={num_frames}")
         hidden_states = self.resnets[0](hidden_states, temb)
+        logger.debug(f"经过第一个 resnet，hidden_states 均值: {hidden_states.mean()}")
         if self.temp_convs[0] is not None:
             hidden_states = self.temp_convs[0](
                 hidden_states,
@@ -385,6 +394,7 @@ class UNetMidBlock3DCrossAttn(nn.Module):
                 sample_index=sample_index,
                 vision_conditon_frames_sample_index=vision_conditon_frames_sample_index,
             )
+            logger.debug(f"经过第一个 temporal conv，hidden_states 均值: {hidden_states.mean()}")
         for attn, temp_attn, resnet, temp_conv in zip(
             self.attentions, self.temp_attentions, self.resnets[1:], self.temp_convs[1:]
         ):
@@ -395,6 +405,7 @@ class UNetMidBlock3DCrossAttn(nn.Module):
                 self_attn_block_embs=refer_self_attn_emb,
                 self_attn_block_embs_mode=refer_self_attn_emb_mode,
             ).sample
+            logger.debug(f"经过 attention，hidden_states 均值: {hidden_states.mean()}")
             if temp_attn is not None:
                 hidden_states = temp_attn(
                     hidden_states,
@@ -406,7 +417,9 @@ class UNetMidBlock3DCrossAttn(nn.Module):
                     vision_conditon_frames_sample_index=vision_conditon_frames_sample_index,
                     spatial_position_emb=spatial_position_emb,
                 ).sample
+                logger.debug(f"经过 temporal attention，hidden_states 均值: {hidden_states.mean()}")
             hidden_states = resnet(hidden_states, temb)
+            logger.debug(f"经过 resnet，hidden_states 均值: {hidden_states.mean()}")
             if temp_conv is not None:
                 hidden_states = temp_conv(
                     hidden_states,
@@ -415,6 +428,7 @@ class UNetMidBlock3DCrossAttn(nn.Module):
                     sample_index=sample_index,
                     vision_conditon_frames_sample_index=vision_conditon_frames_sample_index,
                 )
+                logger.debug(f"经过 temporal conv，hidden_states 均值: {hidden_states.mean()}")
             if (
                 self.need_adain_temporal_cond
                 and num_frames > 1
@@ -429,7 +443,9 @@ class UNetMidBlock3DCrossAttn(nn.Module):
                     src_index=sample_index,
                     dst_index=vision_conditon_frames_sample_index,
                 )
+                logger.debug(f"经过 adain 处理，hidden_states 均值: {hidden_states.mean()}")
         self.print_idx += 1
+        logger.debug(f"UNetMidBlock3DCrossAttn forward 完成，返回 hidden_states")
         return hidden_states
 
 
@@ -470,6 +486,7 @@ class CrossAttnDownBlock3D(nn.Module):
         need_refer_emb: bool = False,
     ):
         super().__init__()
+        logger.debug(f"初始化 CrossAttnDownBlock3D，参数: in_channels={in_channels}, out_channels={out_channels}")
         resnets = []
         attentions = []
         temp_attentions = []
@@ -608,6 +625,7 @@ class CrossAttnDownBlock3D(nn.Module):
         refer_self_attn_emb: List[torch.Tensor] = None,
         refer_self_attn_emb_mode: Literal["read", "write"] = "read",
     ):
+        logger.debug(f"CrossAttnDownBlock3D forward 调用，num_frames={num_frames}")
         # TODO(Patrick, William) - attention mask is not used
         output_states = ()
         for i_downblock, (resnet, temp_conv, attn, temp_attn) in enumerate(
@@ -638,6 +656,7 @@ class CrossAttnDownBlock3D(nn.Module):
                     temb,
                     **ckpt_kwargs,
                 )
+                logger.debug(f"经过 resnet (checkpoint)，hidden_states 均值: {hidden_states.mean()}")
                 if self.print_idx == 0:
                     logger.debug(f"unet3d after resnet {hidden_states.mean()}")
                 if temp_conv is not None:
@@ -650,6 +669,7 @@ class CrossAttnDownBlock3D(nn.Module):
                         femb,
                         **ckpt_kwargs,
                     )
+                    logger.debug(f"经过 temporal conv (checkpoint)，hidden_states 均值: {hidden_states.mean()}")
                 hidden_states = torch.utils.checkpoint.checkpoint(
                     create_custom_forward(attn, return_dict=False),
                     hidden_states,
@@ -664,6 +684,7 @@ class CrossAttnDownBlock3D(nn.Module):
                     refer_self_attn_emb_mode,
                     **ckpt_kwargs,
                 )[0]
+                logger.debug(f"经过 attention (checkpoint)，hidden_states 均值: {hidden_states.mean()}")
                 if temp_attn is not None:
                     hidden_states = torch.utils.checkpoint.checkpoint(
                         create_custom_forward(temp_attn, return_dict=False),
@@ -680,8 +701,10 @@ class CrossAttnDownBlock3D(nn.Module):
                         spatial_position_emb,
                         **ckpt_kwargs,
                     )[0]
+                    logger.debug(f"经过 temporal attention (checkpoint)，hidden_states 均值: {hidden_states.mean()}")
             else:
                 hidden_states = resnet(hidden_states, temb)
+                logger.debug(f"经过 resnet，hidden_states 均值: {hidden_states.mean()}")
                 if self.print_idx == 0:
                     logger.debug(f"unet3d after resnet {hidden_states.mean()}")
                 if temp_conv is not None:
@@ -692,6 +715,7 @@ class CrossAttnDownBlock3D(nn.Module):
                         sample_index=sample_index,
                         vision_conditon_frames_sample_index=vision_conditon_frames_sample_index,
                     )
+                    logger.debug(f"经过 temporal conv，hidden_states 均值: {hidden_states.mean()}")
                 hidden_states = attn(
                     hidden_states,
                     encoder_hidden_states=encoder_hidden_states,
@@ -699,6 +723,7 @@ class CrossAttnDownBlock3D(nn.Module):
                     self_attn_block_embs=refer_self_attn_emb,
                     self_attn_block_embs_mode=refer_self_attn_emb_mode,
                 ).sample
+                logger.debug(f"经过 attention，hidden_states 均值: {hidden_states.mean()}")
                 if temp_attn is not None:
                     hidden_states = temp_attn(
                         hidden_states,
@@ -710,6 +735,7 @@ class CrossAttnDownBlock3D(nn.Module):
                         vision_conditon_frames_sample_index=vision_conditon_frames_sample_index,
                         spatial_position_emb=spatial_position_emb,
                     ).sample
+                    logger.debug(f"经过 temporal attention，hidden_states 均值: {hidden_states.mean()}")
             if (
                 self.need_adain_temporal_cond
                 and num_frames > 1
@@ -724,6 +750,7 @@ class CrossAttnDownBlock3D(nn.Module):
                     src_index=sample_index,
                     dst_index=vision_conditon_frames_sample_index,
                 )
+                logger.debug(f"经过 adain 处理，hidden_states 均值: {hidden_states.mean()}")
             # 使用 attn 的方式 来融合 down_block_refer_emb
             if self.print_idx == 0:
                 logger.debug(
@@ -737,6 +764,7 @@ class CrossAttnDownBlock3D(nn.Module):
                 hidden_states = self.refer_emb_attns[i_downblock](
                     hidden_states, refer_embs[i_downblock], num_frames=num_frames
                 )
+                logger.debug(f"经过 refer_emb_attn，hidden_states 均值: {hidden_states.mean()}")
             else:
                 if self.print_idx == 0:
                     logger.debug(f"crossattndownblock refer_emb_attns, no this step")
@@ -745,6 +773,7 @@ class CrossAttnDownBlock3D(nn.Module):
         if self.downsamplers is not None:
             for downsampler in self.downsamplers:
                 hidden_states = downsampler(hidden_states)
+                logger.debug(f"经过 downsampler，hidden_states 均值: {hidden_states.mean()}")
             if (
                 self.need_adain_temporal_cond
                 and num_frames > 1
@@ -759,6 +788,7 @@ class CrossAttnDownBlock3D(nn.Module):
                     src_index=sample_index,
                     dst_index=vision_conditon_frames_sample_index,
                 )
+                logger.debug(f"经过 adain 处理 (downsampler后)，hidden_states 均值: {hidden_states.mean()}")
             # 使用 attn 的方式 来融合 down_block_refer_emb
             # TODO: adain和 refer_emb的顺序
             # TODO：adain 首帧特征还是refer_emb的
@@ -767,8 +797,10 @@ class CrossAttnDownBlock3D(nn.Module):
                 hidden_states = self.refer_emb_attns[i_downblock](
                     hidden_states, refer_embs[i_downblock], num_frames=num_frames
                 )
+                logger.debug(f"经过 refer_emb_attn (downsampler后)，hidden_states 均值: {hidden_states.mean()}")
             output_states += (hidden_states,)
         self.print_idx += 1
+        logger.debug(f"CrossAttnDownBlock3D forward 完成，返回 hidden_states 和 output_states")
         return hidden_states, output_states
 
 
@@ -798,6 +830,7 @@ class DownBlock3D(nn.Module):
         attn_num_head_channels: int = 1,
     ):
         super().__init__()
+        logger.debug(f"初始化 DownBlock3D，参数: in_channels={in_channels}, out_channels={out_channels}")
         resnets = []
         temp_convs = []
         self.need_refer_emb = need_refer_emb
@@ -894,6 +927,7 @@ class DownBlock3D(nn.Module):
         refer_self_attn_emb: List[torch.Tensor] = None,
         refer_self_attn_emb_mode: Literal["read", "write"] = "read",
     ):
+        logger.debug(f"DownBlock3D forward 调用，num_frames={num_frames}")
         output_states = ()
 
         for i_downblock, (resnet, temp_conv) in enumerate(
@@ -916,6 +950,7 @@ class DownBlock3D(nn.Module):
                     temb,
                     **ckpt_kwargs,
                 )
+                logger.debug(f"经过 resnet (checkpoint)，hidden_states 均值: {hidden_states.mean()}")
                 if temp_conv is not None:
                     hidden_states = torch.utils.checkpoint.checkpoint(
                         create_custom_forward(temp_conv),
@@ -926,8 +961,10 @@ class DownBlock3D(nn.Module):
                         femb,
                         **ckpt_kwargs,
                     )
+                    logger.debug(f"经过 temporal conv (checkpoint)，hidden_states 均值: {hidden_states.mean()}")
             else:
                 hidden_states = resnet(hidden_states, temb)
+                logger.debug(f"经过 resnet，hidden_states 均值: {hidden_states.mean()}")
                 if temp_conv is not None:
                     hidden_states = temp_conv(
                         hidden_states,
@@ -936,6 +973,7 @@ class DownBlock3D(nn.Module):
                         sample_index=sample_index,
                         vision_conditon_frames_sample_index=vision_conditon_frames_sample_index,
                     )
+                    logger.debug(f"经过 temporal conv，hidden_states 均值: {hidden_states.mean()}")
             if (
                 self.need_adain_temporal_cond
                 and num_frames > 1
@@ -950,15 +988,18 @@ class DownBlock3D(nn.Module):
                     src_index=sample_index,
                     dst_index=vision_conditon_frames_sample_index,
                 )
+                logger.debug(f"经过 adain 处理，hidden_states 均值: {hidden_states.mean()}")
             if self.need_refer_emb and refer_embs is not None:
                 hidden_states = self.refer_emb_attns[i_downblock](
                     hidden_states, refer_embs[i_downblock], num_frames=num_frames
                 )
+                logger.debug(f"经过 refer_emb_attn，hidden_states 均值: {hidden_states.mean()}")
             output_states += (hidden_states,)
 
         if self.downsamplers is not None:
             for downsampler in self.downsamplers:
                 hidden_states = downsampler(hidden_states)
+                logger.debug(f"经过 downsampler，hidden_states 均值: {hidden_states.mean()}")
             if (
                 self.need_adain_temporal_cond
                 and num_frames > 1
@@ -973,13 +1014,16 @@ class DownBlock3D(nn.Module):
                     src_index=sample_index,
                     dst_index=vision_conditon_frames_sample_index,
                 )
+                logger.debug(f"经过 adain 处理 (downsampler后)，hidden_states 均值: {hidden_states.mean()}")
             if self.need_refer_emb and refer_embs is not None:
                 i_downblock += 1
                 hidden_states = self.refer_emb_attns[i_downblock](
                     hidden_states, refer_embs[i_downblock], num_frames=num_frames
                 )
+                logger.debug(f"经过 refer_emb_attn (downsampler后)，hidden_states 均值: {hidden_states.mean()}")
             output_states += (hidden_states,)
         self.print_idx += 1
+        logger.debug(f"DownBlock3D forward 完成，返回 hidden_states 和 output_states")
         return hidden_states, output_states
 
 
@@ -1019,6 +1063,7 @@ class CrossAttnUpBlock3D(nn.Module):
         resnet_2d_skip_time_act: bool = False,
     ):
         super().__init__()
+        logger.debug(f"初始化 CrossAttnUpBlock3D，参数: in_channels={in_channels}, out_channels={out_channels}")
         resnets = []
         temp_convs = []
         attentions = []
@@ -1121,6 +1166,7 @@ class CrossAttnUpBlock3D(nn.Module):
         refer_self_attn_emb: List[torch.Tensor] = None,
         refer_self_attn_emb_mode: Literal["read", "write"] = "read",
     ):
+        logger.debug(f"CrossAttnUpBlock3D forward 调用，num_frames={num_frames}")
         for resnet, temp_conv, attn, temp_attn in zip(
             self.resnets, self.temp_convs, self.attentions, self.temp_attentions
         ):
@@ -1128,6 +1174,7 @@ class CrossAttnUpBlock3D(nn.Module):
             res_hidden_states = res_hidden_states_tuple[-1]
             res_hidden_states_tuple = res_hidden_states_tuple[:-1]
             hidden_states = torch.cat([hidden_states, res_hidden_states], dim=1)
+            logger.debug(f"拼接 hidden_states 和 res_hidden_states，新 hidden_states 均值: {hidden_states.mean()}")
             if self.training and self.gradient_checkpointing:
 
                 def create_custom_forward(module, return_dict=None):
@@ -1148,6 +1195,7 @@ class CrossAttnUpBlock3D(nn.Module):
                     temb,
                     **ckpt_kwargs,
                 )
+                logger.debug(f"经过 resnet (checkpoint)，hidden_states 均值: {hidden_states.mean()}")
                 if temp_conv is not None:
                     hidden_states = torch.utils.checkpoint.checkpoint(
                         create_custom_forward(temp_conv),
@@ -1158,6 +1206,7 @@ class CrossAttnUpBlock3D(nn.Module):
                         femb,
                         **ckpt_kwargs,
                     )
+                    logger.debug(f"经过 temporal conv (checkpoint)，hidden_states 均值: {hidden_states.mean()}")
                 hidden_states = torch.utils.checkpoint.checkpoint(
                     create_custom_forward(attn, return_dict=False),
                     hidden_states,
@@ -1172,6 +1221,7 @@ class CrossAttnUpBlock3D(nn.Module):
                     refer_self_attn_emb_mode,
                     **ckpt_kwargs,
                 )[0]
+                logger.debug(f"经过 attention (checkpoint)，hidden_states 均值: {hidden_states.mean()}")
                 if temp_attn is not None:
                     hidden_states = torch.utils.checkpoint.checkpoint(
                         create_custom_forward(temp_attn, return_dict=False),
@@ -1188,8 +1238,10 @@ class CrossAttnUpBlock3D(nn.Module):
                         spatial_position_emb,
                         **ckpt_kwargs,
                     )[0]
+                    logger.debug(f"经过 temporal attention (checkpoint)，hidden_states 均值: {hidden_states.mean()}")
             else:
                 hidden_states = resnet(hidden_states, temb)
+                logger.debug(f"经过 resnet，hidden_states 均值: {hidden_states.mean()}")
                 if temp_conv is not None:
                     hidden_states = temp_conv(
                         hidden_states,
@@ -1198,6 +1250,7 @@ class CrossAttnUpBlock3D(nn.Module):
                         sample_index=sample_index,
                         vision_conditon_frames_sample_index=vision_conditon_frames_sample_index,
                     )
+                    logger.debug(f"经过 temporal conv，hidden_states 均值: {hidden_states.mean()}")
                 hidden_states = attn(
                     hidden_states,
                     encoder_hidden_states=encoder_hidden_states,
@@ -1205,6 +1258,7 @@ class CrossAttnUpBlock3D(nn.Module):
                     self_attn_block_embs=refer_self_attn_emb,
                     self_attn_block_embs_mode=refer_self_attn_emb_mode,
                 ).sample
+                logger.debug(f"经过 attention，hidden_states 均值: {hidden_states.mean()}")
                 if temp_attn is not None:
                     hidden_states = temp_attn(
                         hidden_states,
@@ -1216,6 +1270,7 @@ class CrossAttnUpBlock3D(nn.Module):
                         vision_conditon_frames_sample_index=vision_conditon_frames_sample_index,
                         spatial_position_emb=spatial_position_emb,
                     ).sample
+                    logger.debug(f"经过 temporal attention，hidden_states 均值: {hidden_states.mean()}")
             if (
                 self.need_adain_temporal_cond
                 and num_frames > 1
@@ -1230,9 +1285,11 @@ class CrossAttnUpBlock3D(nn.Module):
                     src_index=sample_index,
                     dst_index=vision_conditon_frames_sample_index,
                 )
+                logger.debug(f"经过 adain 处理，hidden_states 均值: {hidden_states.mean()}")
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:
                 hidden_states = upsampler(hidden_states, upsample_size)
+                logger.debug(f"经过 upsampler，hidden_states 均值: {hidden_states.mean()}")
             if (
                 self.need_adain_temporal_cond
                 and num_frames > 1
@@ -1247,7 +1304,9 @@ class CrossAttnUpBlock3D(nn.Module):
                     src_index=sample_index,
                     dst_index=vision_conditon_frames_sample_index,
                 )
+                logger.debug(f"经过 adain 处理 (upsampler后)，hidden_states 均值: {hidden_states.mean()}")
         self.print_idx += 1
+        logger.debug(f"CrossAttnUpBlock3D forward 完成，返回 hidden_states")
         return hidden_states
 
 
@@ -1275,6 +1334,7 @@ class UpBlock3D(nn.Module):
         resnet_2d_skip_time_act: bool = False,
     ):
         super().__init__()
+        logger.debug(f"初始化 UpBlock3D，参数: in_channels={in_channels}, out_channels={out_channels}")
         resnets = []
         temp_convs = []
 
@@ -1335,11 +1395,13 @@ class UpBlock3D(nn.Module):
         refer_self_attn_emb: List[torch.Tensor] = None,
         refer_self_attn_emb_mode: Literal["read", "write"] = "read",
     ):
+        logger.debug(f"UpBlock3D forward 调用，num_frames={num_frames}")
         for resnet, temp_conv in zip(self.resnets, self.temp_convs):
             # pop res hidden states
             res_hidden_states = res_hidden_states_tuple[-1]
             res_hidden_states_tuple = res_hidden_states_tuple[:-1]
             hidden_states = torch.cat([hidden_states, res_hidden_states], dim=1)
+            logger.debug(f"拼接 hidden_states 和 res_hidden_states，新 hidden_states 均值: {hidden_states.mean()}")
 
             if self.training and self.gradient_checkpointing:
 
@@ -1358,6 +1420,7 @@ class UpBlock3D(nn.Module):
                     temb,
                     **ckpt_kwargs,
                 )
+                logger.debug(f"经过 resnet (checkpoint)，hidden_states 均值: {hidden_states.mean()}")
                 if temp_conv is not None:
                     hidden_states = torch.utils.checkpoint.checkpoint(
                         create_custom_forward(temp_conv),
@@ -1368,8 +1431,10 @@ class UpBlock3D(nn.Module):
                         femb,
                         **ckpt_kwargs,
                     )
+                    logger.debug(f"经过 temporal conv (checkpoint)，hidden_states 均值: {hidden_states.mean()}")
             else:
                 hidden_states = resnet(hidden_states, temb)
+                logger.debug(f"经过 resnet，hidden_states 均值: {hidden_states.mean()}")
                 if temp_conv is not None:
                     hidden_states = temp_conv(
                         hidden_states,
@@ -1378,6 +1443,7 @@ class UpBlock3D(nn.Module):
                         sample_index=sample_index,
                         vision_conditon_frames_sample_index=vision_conditon_frames_sample_index,
                     )
+                    logger.debug(f"经过 temporal conv，hidden_states 均值: {hidden_states.mean()}")
             if (
                 self.need_adain_temporal_cond
                 and num_frames > 1
@@ -1392,9 +1458,11 @@ class UpBlock3D(nn.Module):
                     src_index=sample_index,
                     dst_index=vision_conditon_frames_sample_index,
                 )
+                logger.debug(f"经过 adain 处理，hidden_states 均值: {hidden_states.mean()}")
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:
                 hidden_states = upsampler(hidden_states, upsample_size)
+                logger.debug(f"经过 upsampler，hidden_states 均值: {hidden_states.mean()}")
             if (
                 self.need_adain_temporal_cond
                 and num_frames > 1
@@ -1409,5 +1477,7 @@ class UpBlock3D(nn.Module):
                     src_index=sample_index,
                     dst_index=vision_conditon_frames_sample_index,
                 )
+                logger.debug(f"经过 adain 处理 (upsampler后)，hidden_states 均值: {hidden_states.mean()}")
         self.print_idx += 1
+        logger.debug(f"UpBlock3D forward 完成，返回 hidden_states")
         return hidden_states

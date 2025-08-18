@@ -1,4 +1,3 @@
-# Copyright 2023 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -157,7 +156,63 @@ class ReferenceNet2D(UNet2DConditionModel, nn.Module):
         need_self_attn_block_embs: bool = False,
         need_block_embs: bool = False,
     ):
+        """
+        初始化 ReferenceNet2D 模型
+        
+        Args:
+            sample_size: 输入样本大小
+            in_channels: 输入通道数
+            out_channels: 输出通道数
+            center_input_sample: 是否居中输入样本
+            flip_sin_to_cos: 是否翻转正弦到余弦
+            freq_shift: 频率偏移
+            down_block_types: 下采样块类型列表
+            mid_block_type: 中间块类型
+            up_block_types: 上采样块类型列表
+            only_cross_attention: 是否仅使用交叉注意力
+            block_out_channels: 每个块的输出通道数
+            layers_per_block: 每个块的层数
+            downsample_padding: 下采样填充
+            mid_block_scale_factor: 中间块缩放因子
+            dropout: Dropout 比例
+            act_fn: 激活函数类型
+            norm_num_groups: 归一化组数
+            norm_eps: 归一化 epsilon 值
+            cross_attention_dim: 交叉注意力维度
+            transformer_layers_per_block: 每个块中的 transformer 层数
+            reverse_transformer_layers_per_block: 反向 transformer 层数
+            encoder_hid_dim: 编码器隐藏维度
+            encoder_hid_dim_type: 编码器隐藏维度类型
+            attention_head_dim: 注意力头维度
+            num_attention_heads: 注意力头数量
+            dual_cross_attention: 是否使用双重交叉注意力
+            use_linear_projection: 是否使用线性投影
+            class_embed_type: 类别嵌入类型
+            addition_embed_type: 额外嵌入类型
+            addition_time_embed_dim: 额外时间嵌入维度
+            num_class_embeds: 类别嵌入数量
+            upcast_attention: 是否上转换注意力
+            resnet_time_scale_shift: ResNet 时间缩放偏移
+            resnet_skip_time_act: ResNet 是否跳过时间激活
+            resnet_out_scale_factor: ResNet 输出缩放因子
+            time_embedding_type: 时间嵌入类型
+            time_embedding_dim: 时间嵌入维度
+            time_embedding_act_fn: 时间嵌入激活函数
+            timestep_post_act: 时间步后处理激活函数
+            time_cond_proj_dim: 时间条件投影维度
+            conv_in_kernel: 输入卷积核大小
+            conv_out_kernel: 输出卷积核大小
+            projection_class_embeddings_input_dim: 投影类别嵌入输入维度
+            attention_type: 注意力类型
+            class_embeddings_concat: 是否连接类别嵌入
+            mid_block_only_cross_attention: 中间块是否仅使用交叉注意力
+            cross_attention_norm: 交叉注意力归一化类型
+            addition_embed_type_num_heads: 额外嵌入类型头数
+            need_self_attn_block_embs: 是否需要自注意力块嵌入
+            need_block_embs: 是否需要块嵌入
+        """
         super().__init__()
+        logger.info("初始化 ReferenceNet2D 模型")
 
         self.sample_size = sample_size
 
@@ -166,58 +221,53 @@ class ReferenceNet2D(UNet2DConditionModel, nn.Module):
                 "At the moment it is not possible to define the number of attention heads via `num_attention_heads` because of a naming issue as described in https://github.com/huggingface/diffusers/issues/2011#issuecomment-1547958131. Passing `num_attention_heads` will only be supported in diffusers v0.19."
             )
 
-        # If `num_attention_heads` is not defined (which is the case for most models)
-        # it will default to `attention_head_dim`. This looks weird upon first reading it and it is.
-        # The reason for this behavior is to correct for incorrectly named variables that were introduced
-        # when this library was created. The incorrect naming was only discovered much later in https://github.com/huggingface/diffusers/issues/2011#issuecomment-1547958131
-        # Changing `attention_head_dim` to `num_attention_heads` for 40,000+ configurations is too backwards breaking
-        # which is why we correct for the naming here.
+        # 如果未定义 num_attention_heads（大多数模型的情况），则默认为 attention_head_dim
         num_attention_heads = num_attention_heads or attention_head_dim
 
-        # Check inputs
+        # 检查输入参数
         if len(down_block_types) != len(up_block_types):
             raise ValueError(
-                f"Must provide the same number of `down_block_types` as `up_block_types`. `down_block_types`: {down_block_types}. `up_block_types`: {up_block_types}."
+                f"必须提供相同数量的 `down_block_types` 和 `up_block_types`. `down_block_types`: {down_block_types}. `up_block_types`: {up_block_types}."
             )
 
         if len(block_out_channels) != len(down_block_types):
             raise ValueError(
-                f"Must provide the same number of `block_out_channels` as `down_block_types`. `block_out_channels`: {block_out_channels}. `down_block_types`: {down_block_types}."
+                f"必须提供相同数量的 [block_out_channels] 和 `down_block_types`. block_out_channels: {block_out_channels}. `down_block_types`: {down_block_types}."
             )
 
         if not isinstance(only_cross_attention, bool) and len(
             only_cross_attention
         ) != len(down_block_types):
             raise ValueError(
-                f"Must provide the same number of `only_cross_attention` as `down_block_types`. `only_cross_attention`: {only_cross_attention}. `down_block_types`: {down_block_types}."
+                f"必须提供相同数量的 `only_cross_attention` 和 `down_block_types`. `only_cross_attention`: {only_cross_attention}. `down_block_types`: {down_block_types}."
             )
 
         if not isinstance(num_attention_heads, int) and len(num_attention_heads) != len(
             down_block_types
         ):
             raise ValueError(
-                f"Must provide the same number of `num_attention_heads` as `down_block_types`. `num_attention_heads`: {num_attention_heads}. `down_block_types`: {down_block_types}."
+                f"必须提供相同数量的 num_attention_heads 和 `down_block_types`. num_attention_heads: {num_attention_heads}. `down_block_types`: {down_block_types}."
             )
 
         if not isinstance(attention_head_dim, int) and len(attention_head_dim) != len(
             down_block_types
         ):
             raise ValueError(
-                f"Must provide the same number of `attention_head_dim` as `down_block_types`. `attention_head_dim`: {attention_head_dim}. `down_block_types`: {down_block_types}."
+                f"必须提供相同数量的 attention_head_dim 和 `down_block_types`. attention_head_dim: {attention_head_dim}. `down_block_types`: {down_block_types}."
             )
 
         if isinstance(cross_attention_dim, list) and len(cross_attention_dim) != len(
             down_block_types
         ):
             raise ValueError(
-                f"Must provide the same number of `cross_attention_dim` as `down_block_types`. `cross_attention_dim`: {cross_attention_dim}. `down_block_types`: {down_block_types}."
+                f"必须提供相同数量的 cross_attention_dim 和 `down_block_types`. cross_attention_dim: {cross_attention_dim}. `down_block_types`: {down_block_types}."
             )
 
         if not isinstance(layers_per_block, int) and len(layers_per_block) != len(
             down_block_types
         ):
             raise ValueError(
-                f"Must provide the same number of `layers_per_block` as `down_block_types`. `layers_per_block`: {layers_per_block}. `down_block_types`: {down_block_types}."
+                f"必须提供相同数量的 layers_per_block 和 `down_block_types`. layers_per_block: {layers_per_block}. `down_block_types`: {down_block_types}."
             )
         if (
             isinstance(transformer_layers_per_block, list)
@@ -226,10 +276,10 @@ class ReferenceNet2D(UNet2DConditionModel, nn.Module):
             for layer_number_per_block in transformer_layers_per_block:
                 if isinstance(layer_number_per_block, list):
                     raise ValueError(
-                        "Must provide 'reverse_transformer_layers_per_block` if using asymmetrical UNet."
+                        "如果使用非对称 UNet，必须提供 'reverse_transformer_layers_per_block`。"
                     )
 
-        # input
+        # 输入层
         conv_in_padding = (conv_in_kernel - 1) // 2
         self.conv_in = nn.Conv2d(
             in_channels,
@@ -237,13 +287,14 @@ class ReferenceNet2D(UNet2DConditionModel, nn.Module):
             kernel_size=conv_in_kernel,
             padding=conv_in_padding,
         )
+        logger.debug(f"创建输入卷积层: in_channels={in_channels}, out_channels={block_out_channels[0]}")
 
-        # time
+        # 时间嵌入
         if time_embedding_type == "fourier":
             time_embed_dim = time_embedding_dim or block_out_channels[0] * 2
             if time_embed_dim % 2 != 0:
                 raise ValueError(
-                    f"`time_embed_dim` should be divisible by 2, but is {time_embed_dim}."
+                    f"`time_embed_dim` 应该能被 2 整除, 但是是 {time_embed_dim}."
                 )
             self.time_proj = GaussianFourierProjection(
                 time_embed_dim // 2,
@@ -261,7 +312,7 @@ class ReferenceNet2D(UNet2DConditionModel, nn.Module):
             timestep_input_dim = block_out_channels[0]
         else:
             raise ValueError(
-                f"{time_embedding_type} does not exist. Please make sure to use one of `fourier` or `positional`."
+                f"{time_embedding_type} 不存在。请确保使用 `fourier` 或 `positional` 之一。"
             )
 
         self.time_embedding = TimestepEmbedding(
@@ -271,25 +322,26 @@ class ReferenceNet2D(UNet2DConditionModel, nn.Module):
             post_act_fn=timestep_post_act,
             cond_proj_dim=time_cond_proj_dim,
         )
+        logger.debug(f"创建时间嵌入层: timestep_input_dim={timestep_input_dim}, time_embed_dim={time_embed_dim}")
 
         if encoder_hid_dim_type is None and encoder_hid_dim is not None:
             encoder_hid_dim_type = "text_proj"
             self.register_to_config(encoder_hid_dim_type=encoder_hid_dim_type)
             logger.info(
-                "encoder_hid_dim_type defaults to 'text_proj' as `encoder_hid_dim` is defined."
+                "encoder_hid_dim_type 默认为 'text_proj' 因为定义了 `encoder_hid_dim`。"
             )
 
         if encoder_hid_dim is None and encoder_hid_dim_type is not None:
             raise ValueError(
-                f"`encoder_hid_dim` has to be defined when `encoder_hid_dim_type` is set to {encoder_hid_dim_type}."
+                f"当 `encoder_hid_dim_type` 设置为 {encoder_hid_dim_type} 时，必须定义 `encoder_hid_dim`。"
             )
 
         if encoder_hid_dim_type == "text_proj":
             self.encoder_hid_proj = nn.Linear(encoder_hid_dim, cross_attention_dim)
         elif encoder_hid_dim_type == "text_image_proj":
-            # image_embed_dim DOESN'T have to be `cross_attention_dim`. To not clutter the __init__ too much
-            # they are set to `cross_attention_dim` here as this is exactly the required dimension for the currently only use
-            # case when `addition_embed_type == "text_image_proj"` (Kadinsky 2.1)`
+            # image_embed_dim 不一定必须是 cross_attention_dim。为了不使 __init__ 太混乱
+            # 它们在这里设置为 cross_attention_dim，因为这是目前唯一使用的情况
+            # 当 `addition_embed_type == "text_image_proj"` 时 (Kadinsky 2.1)`
             self.encoder_hid_proj = TextImageProjection(
                 text_embed_dim=encoder_hid_dim,
                 image_embed_dim=cross_attention_dim,
@@ -303,12 +355,12 @@ class ReferenceNet2D(UNet2DConditionModel, nn.Module):
             )
         elif encoder_hid_dim_type is not None:
             raise ValueError(
-                f"encoder_hid_dim_type: {encoder_hid_dim_type} must be None, 'text_proj' or 'text_image_proj'."
+                f"encoder_hid_dim_type: {encoder_hid_dim_type} 必须是 None, 'text_proj' 或 'text_image_proj'。"
             )
         else:
             self.encoder_hid_proj = None
 
-        # class embedding
+        # 类别嵌入
         if class_embed_type is None and num_class_embeds is not None:
             self.class_embedding = nn.Embedding(num_class_embeds, time_embed_dim)
         elif class_embed_type == "timestep":
@@ -320,22 +372,18 @@ class ReferenceNet2D(UNet2DConditionModel, nn.Module):
         elif class_embed_type == "projection":
             if projection_class_embeddings_input_dim is None:
                 raise ValueError(
-                    "`class_embed_type`: 'projection' requires `projection_class_embeddings_input_dim` be set"
+                    "`class_embed_type`: 'projection' 需要设置 `projection_class_embeddings_input_dim`"
                 )
-            # The projection `class_embed_type` is the same as the timestep `class_embed_type` except
-            # 1. the `class_labels` inputs are not first converted to sinusoidal embeddings
-            # 2. it projects from an arbitrary input dimension.
-            #
-            # Note that `TimestepEmbedding` is quite general, being mainly linear layers and activations.
-            # When used for embedding actual timesteps, the timesteps are first converted to sinusoidal embeddings.
-            # As a result, `TimestepEmbedding` can be passed arbitrary vectors.
+            # 投影 `class_embed_type` 与时间步 `class_embed_type` 相同，除了
+            # 1. `class_labels` 输入不会首先转换为正弦嵌入
+            # 2. 它从任意输入维度进行投影。
             self.class_embedding = TimestepEmbedding(
                 projection_class_embeddings_input_dim, time_embed_dim
             )
         elif class_embed_type == "simple_projection":
             if projection_class_embeddings_input_dim is None:
                 raise ValueError(
-                    "`class_embed_type`: 'simple_projection' requires `projection_class_embeddings_input_dim` be set"
+                    "`class_embed_type`: 'simple_projection' 需要设置 `projection_class_embeddings_input_dim`"
                 )
             self.class_embedding = nn.Linear(
                 projection_class_embeddings_input_dim, time_embed_dim
@@ -355,9 +403,9 @@ class ReferenceNet2D(UNet2DConditionModel, nn.Module):
                 num_heads=addition_embed_type_num_heads,
             )
         elif addition_embed_type == "text_image":
-            # text_embed_dim and image_embed_dim DON'T have to be `cross_attention_dim`. To not clutter the __init__ too much
-            # they are set to `cross_attention_dim` here as this is exactly the required dimension for the currently only use
-            # case when `addition_embed_type == "text_image"` (Kadinsky 2.1)`
+            # text_embed_dim 和 image_embed_dim 不一定必须是 cross_attention_dim。为了不使 __init__ 太混乱
+            # 它们在这里设置为 cross_attention_dim，因为这是目前唯一使用的情况
+            # 当 `addition_embed_type == "text_image"` 时 (Kadinsky 2.1)`
             self.add_embedding = TextImageTimeEmbedding(
                 text_embed_dim=cross_attention_dim,
                 image_embed_dim=cross_attention_dim,
@@ -382,7 +430,7 @@ class ReferenceNet2D(UNet2DConditionModel, nn.Module):
             )
         elif addition_embed_type is not None:
             raise ValueError(
-                f"addition_embed_type: {addition_embed_type} must be None, 'text' or 'text_image'."
+                f"addition_embed_type: {addition_embed_type} 必须是 None, 'text' 或 'text_image'。"
             )
 
         if time_embedding_act_fn is None:
@@ -420,14 +468,12 @@ class ReferenceNet2D(UNet2DConditionModel, nn.Module):
             )
 
         if class_embeddings_concat:
-            # The time embeddings are concatenated with the class embeddings. The dimension of the
-            # time embeddings passed to the down, middle, and up blocks is twice the dimension of the
-            # regular time embeddings
+            # 时间嵌入与类别嵌入连接。传递给下、中、上块的时间嵌入维度是常规时间嵌入维度的两倍
             blocks_time_embed_dim = time_embed_dim * 2
         else:
             blocks_time_embed_dim = time_embed_dim
 
-        # down
+        # 下采样块
         output_channel = block_out_channels[0]
         for i, down_block_type in enumerate(down_block_types):
             input_channel = output_channel
@@ -463,8 +509,9 @@ class ReferenceNet2D(UNet2DConditionModel, nn.Module):
                 dropout=dropout,
             )
             self.down_blocks.append(down_block)
+            logger.debug(f"创建下采样块 {i}: type={down_block_type}")
 
-        # mid
+        # 中间块
         if mid_block_type == "UNetMidBlock2DCrossAttn":
             self.mid_block = UNetMidBlock2DCrossAttn(
                 transformer_layers_per_block=transformer_layers_per_block[-1],
@@ -515,12 +562,15 @@ class ReferenceNet2D(UNet2DConditionModel, nn.Module):
         elif mid_block_type is None:
             self.mid_block = None
         else:
-            raise ValueError(f"unknown mid_block_type : {mid_block_type}")
+            raise ValueError(f"未知的 mid_block_type : {mid_block_type}")
+        
+        if self.mid_block is not None:
+            logger.debug(f"创建中间块: type={mid_block_type}")
 
-        # count how many layers upsample the images
+        # 计算上采样层数
         self.num_upsamplers = 0
 
-        # up
+        # 上采样块
         reversed_block_out_channels = list(reversed(block_out_channels))
         reversed_num_attention_heads = list(reversed(num_attention_heads))
         reversed_layers_per_block = list(reversed(layers_per_block))
@@ -542,7 +592,7 @@ class ReferenceNet2D(UNet2DConditionModel, nn.Module):
                 min(i + 1, len(block_out_channels) - 1)
             ]
 
-            # add upsample block for all BUT final layer
+            # 为除最后一层外的所有层添加上采样块
             if not is_final_block:
                 add_upsample = True
                 self.num_upsamplers += 1
@@ -580,8 +630,9 @@ class ReferenceNet2D(UNet2DConditionModel, nn.Module):
             )
             self.up_blocks.append(up_block)
             prev_output_channel = output_channel
+            logger.debug(f"创建上采样块 {i}: type={up_block_type}")
 
-        # out
+        # 输出层
         if norm_num_groups is not None:
             self.conv_norm_out = nn.GroupNorm(
                 num_channels=block_out_channels[0],
@@ -621,7 +672,7 @@ class ReferenceNet2D(UNet2DConditionModel, nn.Module):
         self.need_block_embs = need_block_embs
         self.need_self_attn_block_embs = need_self_attn_block_embs
 
-        # only use referencenet soma layers, other layers set None
+        # 仅使用 referencenet 的某些层，其他层设为 None
         self.conv_norm_out = None
         self.conv_act = None
         self.conv_out = None
@@ -636,6 +687,7 @@ class ReferenceNet2D(UNet2DConditionModel, nn.Module):
             self.up_blocks = None
 
         self.insert_spatial_self_attn_idx()
+        logger.info("ReferenceNet2D 模型初始化完成")
 
     def forward(
         self,
@@ -658,108 +710,104 @@ class ReferenceNet2D(UNet2DConditionModel, nn.Module):
         # update new paramestes end
     ) -> Union[UNet2DConditionOutput, Tuple]:
         r"""
-        The [`UNet2DConditionModel`] forward method.
+        ReferenceNet2D 模型的前向传播方法。
 
         Args:
             sample (`torch.FloatTensor`):
-                The noisy input tensor with the following shape `(batch, channel, height, width)`.
-            timestep (`torch.FloatTensor` or `float` or `int`): The number of timesteps to denoise an input.
+                带噪声的输入张量，形状为 `(batch, channel, height, width)`。
+            timestep (`torch.FloatTensor` 或 `float` 或 `int`): 去噪的时间步数。
             encoder_hidden_states (`torch.FloatTensor`):
-                The encoder hidden states with shape `(batch, sequence_length, feature_dim)`.
-            class_labels (`torch.Tensor`, *optional*, defaults to `None`):
-                Optional class labels for conditioning. Their embeddings will be summed with the timestep embeddings.
-            timestep_cond: (`torch.Tensor`, *optional*, defaults to `None`):
-                Conditional embeddings for timestep. If provided, the embeddings will be summed with the samples passed
-                through the `self.time_embedding` layer to obtain the timestep embeddings.
-            attention_mask (`torch.Tensor`, *optional*, defaults to `None`):
-                An attention mask of shape `(batch, key_tokens)` is applied to `encoder_hidden_states`. If `1` the mask
-                is kept, otherwise if `0` it is discarded. Mask will be converted into a bias, which adds large
-                negative values to the attention scores corresponding to "discard" tokens.
-            cross_attention_kwargs (`dict`, *optional*):
-                A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
-                `self.processor` in
-                [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
-            added_cond_kwargs: (`dict`, *optional*):
-                A kwargs dictionary containing additional embeddings that if specified are added to the embeddings that
-                are passed along to the UNet blocks.
-            down_block_additional_residuals: (`tuple` of `torch.Tensor`, *optional*):
-                A tuple of tensors that if specified are added to the residuals of down unet blocks.
-            mid_block_additional_residual: (`torch.Tensor`, *optional*):
-                A tensor that if specified is added to the residual of the middle unet block.
+                编码器隐藏状态，形状为 `(batch, sequence_length, feature_dim)`。
+            class_labels (`torch.Tensor`, *可选*, 默认为 `None`):
+                可选的类别标签用于条件控制。它们的嵌入将与时间步嵌入相加。
+            timestep_cond: (`torch.Tensor`, *可选*, 默认为 `None`):
+                时间步的条件嵌入。如果提供，嵌入将与通过 `self.time_embedding` 层传递的样本相加以获得时间步嵌入。
+            attention_mask (`torch.Tensor`, *可选*, 默认为 `None`):
+                应用于 `encoder_hidden_states` 的注意力掩码，形状为 `(batch, key_tokens)`。如果为 `1` 则保留掩码，
+                否则如果为 `0` 则丢弃。掩码将被转换为偏置，为"丢弃"标记对应的注意力分数添加大的负值。
+            cross_attention_kwargs (`dict`, *可选*):
+                如果指定，则传递给 `AttentionProcessor` 的 kwargs 字典，定义在
+                diffusers.models.attention_processor https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py 中的 `self.processor` 下。
+            added_cond_kwargs: (`dict`, *可选*):
+                包含额外嵌入的 kwargs 字典，如果指定则添加到传递给 UNet 块的嵌入中。
+            down_block_additional_residuals: (`tuple` of `torch.Tensor`, *可选*):
+                如果指定，则添加到下 unet 块残差的张量元组。
+            mid_block_additional_residual: (`torch.Tensor`, *可选*):
+                如果指定，则添加到中间 unet 块输出的张量。
             encoder_attention_mask (`torch.Tensor`):
-                A cross-attention mask of shape `(batch, sequence_length)` is applied to `encoder_hidden_states`. If
-                `True` the mask is kept, otherwise if `False` it is discarded. Mask will be converted into a bias,
-                which adds large negative values to the attention scores corresponding to "discard" tokens.
-            return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~models.unet_2d_condition.UNet2DConditionOutput`] instead of a plain
-                tuple.
-            cross_attention_kwargs (`dict`, *optional*):
-                A kwargs dictionary that if specified is passed along to the [`AttnProcessor`].
-            added_cond_kwargs: (`dict`, *optional*):
-                A kwargs dictionary containin additional embeddings that if specified are added to the embeddings that
-                are passed along to the UNet blocks.
-            down_block_additional_residuals (`tuple` of `torch.Tensor`, *optional*):
-                additional residuals to be added to UNet long skip connections from down blocks to up blocks for
-                example from ControlNet side model(s)
-            mid_block_additional_residual (`torch.Tensor`, *optional*):
-                additional residual to be added to UNet mid block output, for example from ControlNet side model
-            down_intrablock_additional_residuals (`tuple` of `torch.Tensor`, *optional*):
-                additional residuals to be added within UNet down blocks, for example from T2I-Adapter side model(s)
+                应用于 `encoder_hidden_states` 的交叉注意力掩码，形状为 `(batch, sequence_length)`。
+                如果为 `True` 则保留掩码，否则如果为 `False` 则丢弃。掩码将被转换为偏置，
+                为"丢弃"标记对应的注意力分数添加大的负值。
+            return_dict (`bool`, *可选*, 默认为 `True`):
+                是否返回 [`~models.unet_2d_condition.UNet2DConditionOutput`] 而不是普通元组。
+            cross_attention_kwargs (`dict`, *可选*):
+                如果指定，则传递给 [`AttnProcessor`] 的 kwargs 字典。
+            added_cond_kwargs: (`dict`, *可选*):
+                包含额外嵌入的 kwargs 字典，如果指定则添加到传递给 UNet 块的嵌入中。
+            down_block_additional_residuals (`tuple` of `torch.Tensor`, *可选*):
+                从下块到上块的 UNet 长跳跃连接中要添加的额外残差，例如来自 ControlNet 侧模型的残差
+            mid_block_additional_residual (`torch.Tensor`, *可选*):
+                要添加到 UNet 中间块输出的额外残差，例如来自 ControlNet 侧模型的残差
+            down_intrablock_additional_residuals (`tuple` of `torch.Tensor`, *可选*):
+                要添加到 UNet 下块内部的额外残差，例如来自 T2I-Adapter 侧模型的残差
+            num_frames: 帧数
+            return_ndim: 返回张量的维度数
 
         Returns:
-            [`~models.unet_2d_condition.UNet2DConditionOutput`] or `tuple`:
-                If `return_dict` is True, an [`~models.unet_2d_condition.UNet2DConditionOutput`] is returned, otherwise
-                a `tuple` is returned where the first element is the sample tensor.
+            [`~models.unet_2d_condition.UNet2DConditionOutput`] 或 `tuple`:
+                如果 `return_dict` 为 True，返回 [`~models.unet_2d_condition.UNet2DConditionOutput`]，否则
+                返回一个元组，其中第一个元素是样本张量。
         """
 
-        # By default samples have to be AT least a multiple of the overall upsampling factor.
-        # The overall upsampling factor is equal to 2 ** (# num of upsampling layers).
-        # However, the upsampling interpolation output size can be forced to fit any upsampling size
-        # on the fly if necessary.
+        logger.debug(f"开始前向传播: sample.shape={sample.shape}, timestep={timestep}")
+        
+        # 默认情况下，样本至少应该是整体上采样因子的倍数。
+        # 整体上采样因子等于 2 ** (# 上采样层数)。
+        # 但是，如有必要，上采样插值输出大小可以在运行时强制适应任何上采样大小。
         default_overall_up_factor = 2**self.num_upsamplers
 
-        # upsample size should be forwarded when sample is not a multiple of `default_overall_up_factor`
+        # 当样本不是 `default_overall_up_factor` 的倍数时，应转发上采样大小
         forward_upsample_size = False
         upsample_size = None
 
         for dim in sample.shape[-2:]:
             if dim % default_overall_up_factor != 0:
-                # Forward upsample size to force interpolation output size.
+                # 转发上采样大小以强制插值输出大小。
                 forward_upsample_size = True
                 break
 
-        # ensure attention_mask is a bias, and give it a singleton query_tokens dimension
-        # expects mask of shape:
+        # 确保 attention_mask 是偏置，并给它一个单独的 query_tokens 维度
+        # 期望的掩码形状:
         #   [batch, key_tokens]
-        # adds singleton query_tokens dimension:
+        # 添加单独的 query_tokens 维度:
         #   [batch,                    1, key_tokens]
-        # this helps to broadcast it as a bias over attention scores, which will be in one of the following shapes:
-        #   [batch,  heads, query_tokens, key_tokens] (e.g. torch sdp attn)
-        #   [batch * heads, query_tokens, key_tokens] (e.g. xformers or classic attn)
+        # 这有助于将其作为偏置广播到注意力分数，注意力分数将采用以下形状之一:
+        #   [batch,  heads, query_tokens, key_tokens] (例如 torch sdp attn)
+        #   [batch * heads, query_tokens, key_tokens] (例如 xformers 或经典 attn)
         if attention_mask is not None:
-            # assume that mask is expressed as:
-            #   (1 = keep,      0 = discard)
-            # convert mask into a bias that can be added to attention scores:
-            #       (keep = +0,     discard = -10000.0)
+            # 假设掩码表示为:
+            #   (1 = 保留,      0 = 丢弃)
+            # 将掩码转换为可以添加到注意力分数的偏置:
+            #       (保留 = +0,     丢弃 = -10000.0)
             attention_mask = (1 - attention_mask.to(sample.dtype)) * -10000.0
             attention_mask = attention_mask.unsqueeze(1)
 
-        # convert encoder_attention_mask to a bias the same way we do for attention_mask
+        # 以相同方式将 encoder_attention_mask 转换为偏置
         if encoder_attention_mask is not None:
             encoder_attention_mask = (
                 1 - encoder_attention_mask.to(sample.dtype)
             ) * -10000.0
             encoder_attention_mask = encoder_attention_mask.unsqueeze(1)
 
-        # 0. center input if necessary
+        # 0. 如有必要，居中输入
         if self.config.center_input_sample:
             sample = 2 * sample - 1.0
 
-        # 1. time
+        # 1. 时间处理
         timesteps = timestep
         if not torch.is_tensor(timesteps):
-            # TODO: this requires sync between CPU and GPU. So try to pass timesteps as tensors if you can
-            # This would be a good case for the `match` statement (Python 3.10+)
+            # TODO: 这需要 CPU 和 GPU 之间的同步。所以尽量传递张量形式的时间步
+            # 这将是 `match` 语句的一个很好的用例 (Python 3.10+)
             is_mps = sample.device.type == "mps"
             if isinstance(timestep, float):
                 dtype = torch.float32 if is_mps else torch.float64
@@ -769,30 +817,32 @@ class ReferenceNet2D(UNet2DConditionModel, nn.Module):
         elif len(timesteps.shape) == 0:
             timesteps = timesteps[None].to(sample.device)
 
-        # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
+        # 以与 ONNX/Core ML 兼容的方式广播到批次维度
         timesteps = timesteps.expand(sample.shape[0])
 
         t_emb = self.time_proj(timesteps)
+        logger.debug(f"时间投影完成: t_emb.shape={t_emb.shape}")
 
-        # `Timesteps` does not contain any weights and will always return f32 tensors
-        # but time_embedding might actually be running in fp16. so we need to cast here.
-        # there might be better ways to encapsulate this.
+        # `Timesteps` 不包含任何权重，将始终返回 f32 张量
+        # 但 time_embedding 实际上可能在 fp16 中运行。所以我们需要在这里进行转换。
+        # 可能有更好的封装方法。
         t_emb = t_emb.to(dtype=sample.dtype)
 
         emb = self.time_embedding(t_emb, timestep_cond)
+        logger.debug(f"时间嵌入完成: emb.shape={emb.shape}")
         aug_emb = None
 
         if self.class_embedding is not None:
             if class_labels is None:
                 raise ValueError(
-                    "class_labels should be provided when num_class_embeds > 0"
+                    "当 num_class_embeds > 0 时，应提供 class_labels"
                 )
 
             if self.config.class_embed_type == "timestep":
                 class_labels = self.time_proj(class_labels)
 
-                # `Timesteps` does not contain any weights and will always return f32 tensors
-                # there might be better ways to encapsulate this.
+                # `Timesteps` 不包含任何权重，将始终返回 f32 张量
+                # 可能有更好的封装方法。
                 class_labels = class_labels.to(dtype=sample.dtype)
 
             class_emb = self.class_embedding(class_labels).to(dtype=sample.dtype)
@@ -805,25 +855,25 @@ class ReferenceNet2D(UNet2DConditionModel, nn.Module):
         if self.config.addition_embed_type == "text":
             aug_emb = self.add_embedding(encoder_hidden_states)
         elif self.config.addition_embed_type == "text_image":
-            # Kandinsky 2.1 - style
+            # Kandinsky 2.1 - 风格
             if "image_embeds" not in added_cond_kwargs:
                 raise ValueError(
-                    f"{self.__class__} has the config param `addition_embed_type` set to 'text_image' which requires the keyword argument `image_embeds` to be passed in `added_cond_kwargs`"
+                    f"{self.__class__} 的配置参数 `addition_embed_type` 设置为 'text_image'，这要求在 `added_cond_kwargs` 中传递关键字参数 `image_embeds`"
                 )
 
             image_embs = added_cond_kwargs.get("image_embeds")
             text_embs = added_cond_kwargs.get("text_embeds", encoder_hidden_states)
             aug_emb = self.add_embedding(text_embs, image_embs)
         elif self.config.addition_embed_type == "text_time":
-            # SDXL - style
+            # SDXL - 风格
             if "text_embeds" not in added_cond_kwargs:
                 raise ValueError(
-                    f"{self.__class__} has the config param `addition_embed_type` set to 'text_time' which requires the keyword argument `text_embeds` to be passed in `added_cond_kwargs`"
+                    f"{self.__class__} 的配置参数 `addition_embed_type` 设置为 'text_time'，这要求在 `added_cond_kwargs` 中传递关键字参数 `text_embeds`"
                 )
             text_embeds = added_cond_kwargs.get("text_embeds")
             if "time_ids" not in added_cond_kwargs:
                 raise ValueError(
-                    f"{self.__class__} has the config param `addition_embed_type` set to 'text_time' which requires the keyword argument `time_ids` to be passed in `added_cond_kwargs`"
+                    f"{self.__class__} 的配置参数 `addition_embed_type` 设置为 'text_time'，这要求在 `added_cond_kwargs` 中传递关键字参数 `time_ids`"
                 )
             time_ids = added_cond_kwargs.get("time_ids")
             time_embeds = self.add_time_proj(time_ids.flatten())
@@ -832,21 +882,21 @@ class ReferenceNet2D(UNet2DConditionModel, nn.Module):
             add_embeds = add_embeds.to(emb.dtype)
             aug_emb = self.add_embedding(add_embeds)
         elif self.config.addition_embed_type == "image":
-            # Kandinsky 2.2 - style
+            # Kandinsky 2.2 - 风格
             if "image_embeds" not in added_cond_kwargs:
                 raise ValueError(
-                    f"{self.__class__} has the config param `addition_embed_type` set to 'image' which requires the keyword argument `image_embeds` to be passed in `added_cond_kwargs`"
+                    f"{self.__class__} 的配置参数 `addition_embed_type` 设置为 'image'，这要求在 `added_cond_kwargs` 中传递关键字参数 `image_embeds`"
                 )
             image_embs = added_cond_kwargs.get("image_embeds")
             aug_emb = self.add_embedding(image_embs)
         elif self.config.addition_embed_type == "image_hint":
-            # Kandinsky 2.2 - style
+            # Kandinsky 2.2 - 风格
             if (
                 "image_embeds" not in added_cond_kwargs
                 or "hint" not in added_cond_kwargs
             ):
                 raise ValueError(
-                    f"{self.__class__} has the config param `addition_embed_type` set to 'image_hint' which requires the keyword arguments `image_embeds` and `hint` to be passed in `added_cond_kwargs`"
+                    f"{self.__class__} 的配置参数 `addition_embed_type` 设置为 'image_hint'，这要求在 `added_cond_kwargs` 中传递关键字参数 `image_embeds` 和 `hint`"
                 )
             image_embs = added_cond_kwargs.get("image_embeds")
             hint = added_cond_kwargs.get("hint")
@@ -867,10 +917,10 @@ class ReferenceNet2D(UNet2DConditionModel, nn.Module):
             self.encoder_hid_proj is not None
             and self.config.encoder_hid_dim_type == "text_image_proj"
         ):
-            # Kadinsky 2.1 - style
+            # Kadinsky 2.1 - 风格
             if "image_embeds" not in added_cond_kwargs:
                 raise ValueError(
-                    f"{self.__class__} has the config param `encoder_hid_dim_type` set to 'text_image_proj' which requires the keyword argument `image_embeds` to be passed in  `added_conditions`"
+                    f"{self.__class__} 的配置参数 `encoder_hid_dim_type` 设置为 'text_image_proj'，这要求在 `added_conditions` 中传递关键字参数 `image_embeds`"
                 )
 
             image_embeds = added_cond_kwargs.get("image_embeds")
@@ -881,10 +931,10 @@ class ReferenceNet2D(UNet2DConditionModel, nn.Module):
             self.encoder_hid_proj is not None
             and self.config.encoder_hid_dim_type == "image_proj"
         ):
-            # Kandinsky 2.2 - style
+            # Kandinsky 2.2 - 风格
             if "image_embeds" not in added_cond_kwargs:
                 raise ValueError(
-                    f"{self.__class__} has the config param `encoder_hid_dim_type` set to 'image_proj' which requires the keyword argument `image_embeds` to be passed in  `added_conditions`"
+                    f"{self.__class__} 的配置参数 `encoder_hid_dim_type` 设置为 'image_proj'，这要求在 `added_conditions` 中传递关键字参数 `image_embeds`"
                 )
             image_embeds = added_cond_kwargs.get("image_embeds")
             encoder_hidden_states = self.encoder_hid_proj(image_embeds)
@@ -894,7 +944,7 @@ class ReferenceNet2D(UNet2DConditionModel, nn.Module):
         ):
             if "image_embeds" not in added_cond_kwargs:
                 raise ValueError(
-                    f"{self.__class__} has the config param `encoder_hid_dim_type` set to 'ip_image_proj' which requires the keyword argument `image_embeds` to be passed in  `added_conditions`"
+                    f"{self.__class__} 的配置参数 `encoder_hid_dim_type` 设置为 'ip_image_proj'，这要求在 `added_conditions` 中传递关键字参数 `image_embeds`"
                 )
             image_embeds = added_cond_kwargs.get("image_embeds")
             image_embeds = self.encoder_hid_proj(image_embeds).to(
@@ -911,11 +961,11 @@ class ReferenceNet2D(UNet2DConditionModel, nn.Module):
             self_attn_block_embs = [None] * self.self_attn_num
         else:
             self_attn_block_embs = None
-        # 2. pre-process
+        # 2. 预处理
         sample = self.conv_in(sample)
         if self.print_idx == 0:
-            logger.debug(f"after conv in sample={sample.mean()}")
-        # 2.5 GLIGEN position net
+            logger.debug(f"经过 conv_in 后的 sample 均值={sample.mean()}")
+        # 2.5 GLIGEN 位置网络
         if (
             cross_attention_kwargs is not None
             and cross_attention_kwargs.get("gligen", None) is not None
@@ -926,25 +976,25 @@ class ReferenceNet2D(UNet2DConditionModel, nn.Module):
                 "objs": self.position_net(**gligen_args)
             }
 
-        # 3. down
+        # 3. 下采样
         lora_scale = (
             cross_attention_kwargs.get("scale", 1.0)
             if cross_attention_kwargs is not None
             else 1.0
         )
         if USE_PEFT_BACKEND:
-            # weight the lora layers by setting `lora_scale` for each PEFT layer
+            # 通过为每个 PEFT 层设置 `lora_scale` 来加权 lora 层
             scale_lora_layers(self, lora_scale)
 
         is_controlnet = (
             mid_block_additional_residual is not None
             and down_block_additional_residuals is not None
         )
-        # using new arg down_intrablock_additional_residuals for T2I-Adapters, to distinguish from controlnets
+        # 使用新参数 down_intrablock_additional_residuals 用于 T2I-Adapters，以区别于 controlnets
         is_adapter = down_intrablock_additional_residuals is not None
-        # maintain backward compatibility for legacy usage, where
-        #       T2I-Adapter and ControlNet both use down_block_additional_residuals arg
-        #       but can only use one or the other
+        # 为向后兼容性保留旧用法，其中
+        #       T2I-Adapter 和 ControlNet 都使用 down_block_additional_residuals 参数
+        #       但只能使用其中一个
         if (
             not is_adapter
             and mid_block_additional_residual is None
@@ -953,9 +1003,9 @@ class ReferenceNet2D(UNet2DConditionModel, nn.Module):
             deprecate(
                 "T2I should not use down_block_additional_residuals",
                 "1.3.0",
-                "Passing intrablock residual connections with `down_block_additional_residuals` is deprecated \
-                       and will be removed in diffusers 1.3.0.  `down_block_additional_residuals` should only be used \
-                       for ControlNet. Please make sure use `down_intrablock_additional_residuals` instead. ",
+                "传递块内残差连接与 `down_block_additional_residuals` 已弃用 \
+                       并将在 diffusers 1.3.0 中移除。`down_block_additional_residuals` 应该仅用于 \
+                       ControlNet。请确保改用 `down_intrablock_additional_residuals`。 ",
                 standard_warn=False,
             )
             down_intrablock_additional_residuals = down_block_additional_residuals
@@ -967,7 +1017,7 @@ class ReferenceNet2D(UNet2DConditionModel, nn.Module):
                 hasattr(downsample_block, "has_cross_attention")
                 and downsample_block.has_cross_attention
             ):
-                # For t2i-adapter CrossAttnDownBlock2D
+                # 对于 t2i-adapter CrossAttnDownBlock2D
                 additional_residuals = {}
                 if is_adapter and len(down_intrablock_additional_residuals) > 0:
                     additional_residuals[
@@ -975,7 +1025,7 @@ class ReferenceNet2D(UNet2DConditionModel, nn.Module):
                     ] = down_intrablock_additional_residuals.pop(0)
                 if self.print_idx == 0:
                     logger.debug(
-                        f"downsample_block {i_downsample_block} sample={sample.mean()}"
+                        f"下采样块 {i_downsample_block} sample 均值={sample.mean()}"
                     )
                 sample, res_samples = downsample_block(
                     hidden_states=sample,
@@ -1014,7 +1064,7 @@ class ReferenceNet2D(UNet2DConditionModel, nn.Module):
 
             down_block_res_samples = new_down_block_res_samples
 
-        # update code start
+        # 更新代码开始
         def reshape_return_emb(tmp_emb):
             if return_ndim == 4:
                 return tmp_emb
@@ -1022,7 +1072,7 @@ class ReferenceNet2D(UNet2DConditionModel, nn.Module):
                 return rearrange(tmp_emb, "(b t) c h w-> b c t h w", t=num_frames)
             else:
                 raise ValueError(
-                    f"reshape_emb only support 4, 5 but given {return_ndim}"
+                    f"reshape_emb 仅支持 4, 5 但给定 {return_ndim}"
                 )
 
         if self.need_block_embs:
@@ -1031,9 +1081,9 @@ class ReferenceNet2D(UNet2DConditionModel, nn.Module):
             ]
         else:
             return_down_block_res_samples = None
-        # update code end
+        # 更新代码结束
 
-        # 4. mid
+        # 4. 中间块
         if self.mid_block is not None:
             if (
                 hasattr(self.mid_block, "has_cross_attention")
@@ -1051,7 +1101,7 @@ class ReferenceNet2D(UNet2DConditionModel, nn.Module):
             else:
                 sample = self.mid_block(sample, emb)
 
-            # To support T2I-Adapter-XL
+            # 支持 T2I-Adapter-XL
             if (
                 is_adapter
                 and len(down_intrablock_additional_residuals) > 0
@@ -1071,9 +1121,9 @@ class ReferenceNet2D(UNet2DConditionModel, nn.Module):
             return_mid_block_res_samples = None
 
         if self.up_blocks is not None:
-            # update code end
+            # 更新代码结束
 
-            # 5. up
+            # 5. 上采样
             for i, upsample_block in enumerate(self.up_blocks):
                 is_final_block = i == len(self.up_blocks) - 1
 
@@ -1082,8 +1132,8 @@ class ReferenceNet2D(UNet2DConditionModel, nn.Module):
                     : -len(upsample_block.resnets)
                 ]
 
-                # if we have not reached the final block and need to forward the
-                # upsample size, we do it here
+                # 如果我们尚未到达最终块且需要转发
+                # 上采样大小，我们在这里进行
                 if not is_final_block and forward_upsample_size:
                     upsample_size = down_block_res_samples[-1].shape[2:]
 
@@ -1112,7 +1162,7 @@ class ReferenceNet2D(UNet2DConditionModel, nn.Module):
                         self_attn_block_embs=self_attn_block_embs,
                     )
 
-        # update code start
+        # 更新代码开始
         if self.need_block_embs or self.need_self_attn_block_embs:
             if self_attn_block_embs is not None:
                 self_attn_block_embs = [
@@ -1120,6 +1170,7 @@ class ReferenceNet2D(UNet2DConditionModel, nn.Module):
                     for tmp_emb in self_attn_block_embs
                 ]
             self.print_idx += 1
+            logger.debug("返回块嵌入和自注意力嵌入")
             return (
                 return_down_block_res_samples,
                 return_mid_block_res_samples,
@@ -1127,22 +1178,27 @@ class ReferenceNet2D(UNet2DConditionModel, nn.Module):
             )
 
         if not self.need_block_embs and not self.need_self_attn_block_embs:
-            # 6. post-process
+            # 6. 后处理
             if self.conv_norm_out:
                 sample = self.conv_norm_out(sample)
                 sample = self.conv_act(sample)
             sample = self.conv_out(sample)
 
             if USE_PEFT_BACKEND:
-                # remove `lora_scale` from each PEFT layer
+                # 从每个 PEFT 层中移除 `lora_scale`
                 unscale_lora_layers(self, lora_scale)
             self.print_idx += 1
             if not return_dict:
+                logger.debug("返回样本元组")
                 return (sample,)
 
+            logger.debug("返回 UNet2DConditionOutput")
             return UNet2DConditionOutput(sample=sample)
 
     def insert_spatial_self_attn_idx(self):
+        """
+        插入空间自注意力索引
+        """
         attns, basic_transformers = self.spatial_self_attns
         self.self_attn_num = len(attns)
         for i, (name, layer) in enumerate(attns):
@@ -1158,6 +1214,12 @@ class ReferenceNet2D(UNet2DConditionModel, nn.Module):
     def spatial_self_attns(
         self,
     ) -> List[Tuple[str, Attention]]:
+        """
+        获取空间自注意力层
+        
+        Returns:
+            空间自注意力层列表
+        """
         attns, spatial_transformers = self.get_self_attns(
             include="attentions", exclude="temp_attentions"
         )
@@ -1169,11 +1231,10 @@ class ReferenceNet2D(UNet2DConditionModel, nn.Module):
         self, include: str = None, exclude: str = None
     ) -> List[Tuple[str, Attention]]:
         r"""
-        Returns:
-            `dict` of attention attns: A dictionary containing all attention attns used in the model with
-            indexed by its weight name.
+        返回:
+            注意力层字典: 包含模型中使用的所有注意力层的字典，按键名索引。
         """
-        # set recursively
+        # 递归设置
         attns = []
         spatial_transformers = []
 

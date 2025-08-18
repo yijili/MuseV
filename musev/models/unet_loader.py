@@ -50,32 +50,41 @@ def update_unet_with_sd(
     Returns:
         _type_: _description_
     """
+    logger.info("开始更新UNet中的SD模型参数")
     # dtype = unet.dtype
     # TODO: in this way, sd_model_path must be absolute path, to be more dynamic
     if isinstance(sd_model, str):
         if os.path.isdir(sd_model):
+            logger.info(f"从目录加载模型状态字典: {os.path.join(sd_model, subfolder, 'diffusion_pytorch_model.bin')}")
             unet_state_dict = load_state_dict(
                 os.path.join(sd_model, subfolder, "diffusion_pytorch_model.bin"),
             )
         elif os.path.isfile(sd_model):
             if sd_model.endswith("pth"):
+                logger.info(f"使用torch.load加载模型: {sd_model}")
                 unet_state_dict = torch.load(sd_model, map_location="cpu")
                 print(f"referencenet successful load ={sd_model} with torch.load")
             else:
                 try:
+                    logger.info(f"使用load_state_dict加载模型: {sd_model}")
                     unet_state_dict = load_state_dict(sd_model)
                     print(
                         f"referencenet successful load with {sd_model} with load_state_dict"
                     )
                 except Exception as e:
+                    logger.error(f"加载模型时出错: {e}")
                     print(e)
 
     elif isinstance(sd_model, nn.Module):
+        logger.info("从nn.Module获取状态字典")
         unet_state_dict = sd_model.state_dict()
     else:
         raise ValueError(f"given {type(sd_model)}, but only support nn.Module or str")
+    
+    logger.info("将状态字典加载到UNet中")
     missing, unexpected = unet.load_state_dict(unet_state_dict, strict=False)
     assert len(unexpected) == 0, f"unet load_state_dict error, unexpected={unexpected}"
+    logger.info(f"成功更新UNet参数，缺失键: {len(missing)}, 意外键: {len(unexpected)}")
     # unet.to(dtype=dtype)
     return unet
 
@@ -131,7 +140,9 @@ def load_unet(
     Returns:
         _type_: _description_
     """
+    logger.info(f"开始加载UNet模型，sd_unet_model类型: {type(sd_unet_model)}")
     if isinstance(sd_unet_model, str):
+        logger.info(f"从预训练2D模型加载UNet: {sd_unet_model}")
         unet = UNet3DConditionModel.from_pretrained_2d(
             sd_unet_model,
             subfolder="unet",
@@ -158,9 +169,15 @@ def load_unet(
             need_t2i_ip_adapter_face=need_t2i_ip_adapter_face,
         )
     elif isinstance(sd_unet_model, nn.Module):
+        logger.info("使用提供的UNet模块")
         unet = sd_unet_model
+    
+    logger.info(f"检查是否需要更新UNet参数，sd_model: {sd_model}")
     if sd_model is not None:
+        logger.info("调用update_unet_with_sd更新UNet参数")
         unet = update_unet_with_sd(unet, sd_model)
+    
+    logger.info("UNet加载完成")
     return unet
 
 
@@ -181,25 +198,34 @@ def load_unet_custom_unet(
     Returns:
         _type_: _description_
     """
+    logger.info(f"开始加载自定义UNet模型，sd_unet_model类型: {type(sd_unet_model)}")
     if isinstance(sd_unet_model, str):
+        logger.info(f"从预训练模型加载自定义UNet: {sd_unet_model}")
         unet = unet_class.from_pretrained(
             sd_unet_model,
             subfolder="unet",
         )
     elif isinstance(sd_unet_model, nn.Module):
+        logger.info("使用提供的UNet模块")
         unet = sd_unet_model
 
     # TODO: in this way, sd_model_path must be absolute path, to be more dynamic
+    logger.info(f"加载SD模型参数，sd_model类型: {type(sd_model)}")
     if isinstance(sd_model, str):
+        logger.info(f"从路径加载状态字典: {os.path.join(sd_model, 'unet/diffusion_pytorch_model.bin')}")
         unet_state_dict = load_state_dict(
             os.path.join(sd_model, "unet/diffusion_pytorch_model.bin"),
         )
     elif isinstance(sd_model, nn.Module):
+        logger.info("从nn.Module获取状态字典")
         unet_state_dict = sd_model.state_dict()
+    
+    logger.info("将状态字典加载到UNet中")
     missing, unexpected = unet.load_state_dict(unet_state_dict, strict=False)
     assert (
         len(unexpected) == 0
     ), "unet load_state_dict error"  # Load scheduler, tokenizer and models.
+    logger.info(f"自定义UNet加载完成，缺失键: {len(missing)}, 意外键: {len(unexpected)}")
     return unet
 
 
@@ -229,7 +255,9 @@ def load_unet_by_name(
     Returns:
         nn.Module: _description_
     """
+    logger.info(f"根据模型名称加载UNet: {model_name}")
     if model_name in ["musev"]:
+        logger.info("加载musev模型配置")
         unet = load_unet(
             sd_unet_model=sd_unet_model,
             sd_model=sd_model,
@@ -244,6 +272,7 @@ def load_unet_by_name(
         "musev_referencenet",
         "musev_referencenet_pose",
     ]:
+        logger.info(f"加载{model_name}模型配置")
         unet = load_unet(
             sd_unet_model=sd_unet_model,
             sd_model=sd_model,
@@ -267,7 +296,9 @@ def load_unet_by_name(
             need_t2i_ip_adapter_face=need_t2i_ip_adapter_face,
         )
     else:
-        raise ValueError(
-            f"unsupport model_name={model_name}, only support musev, musev_referencenet, musev_referencenet_pose"
-        )
+        error_msg = f"不支持的model_name={model_name}，仅支持musev, musev_referencenet, musev_referencenet_pose"
+        logger.error(error_msg)
+        raise ValueError(error_msg)
+    
+    logger.info(f"根据模型名称{model_name}成功加载UNet")
     return unet

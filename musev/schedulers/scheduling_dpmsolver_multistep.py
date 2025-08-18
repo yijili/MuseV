@@ -16,6 +16,7 @@
 
 import math
 from typing import List, Optional, Tuple, Union
+import logging
 
 import numpy as np
 import torch
@@ -32,24 +33,26 @@ from diffusers.schedulers.scheduling_utils import (
     SchedulerOutput,
 )
 
+# 设置日志记录器
+logger = logging.getLogger(__name__)
 
 # Copied from diffusers.schedulers.scheduling_ddpm.betas_for_alpha_bar
 def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999):
     """
-    Create a beta schedule that discretizes the given alpha_t_bar function, which defines the cumulative product of
-    (1-beta) over time from t = [0,1].
+    创建一个beta调度，该调度将给定的alpha_t_bar函数离散化，该函数定义了(1-beta)的累积乘积
+    从t = [0,1]的时间范围。
 
-    Contains a function alpha_bar that takes an argument t and transforms it to the cumulative product of (1-beta) up
-    to that part of the diffusion process.
+    包含一个函数alpha_bar，该函数接受参数t并将其转换为(1-beta)的累积乘积
+    到扩散过程的那部分。
 
 
-    Args:
-        num_diffusion_timesteps (`int`): the number of betas to produce.
-        max_beta (`float`): the maximum beta to use; use values lower than 1 to
-                     prevent singularities.
+    参数:
+        num_diffusion_timesteps (`int`): 要生成的betas数量。
+        max_beta (`float`): 使用的最大beta值；使用小于1的值来
+                     防止奇点。
 
-    Returns:
-        betas (`np.ndarray`): the betas used by the scheduler to step the model outputs
+    返回:
+        betas (`np.ndarray`): 调度器用于步进模型输出的betas
     """
 
     def alpha_bar(time_step):
@@ -65,83 +68,82 @@ def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999):
 
 class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
     """
-    DPM-Solver (and the improved version DPM-Solver++) is a fast dedicated high-order solver for diffusion ODEs with
-    the convergence order guarantee. Empirically, sampling by DPM-Solver with only 20 steps can generate high-quality
-    samples, and it can generate quite good samples even in only 10 steps.
+    DPM-Solver (及其改进版本DPM-Solver++) 是一种快速的专用高阶求解器，用于扩散ODEs
+    具有收敛阶数保证。根据经验，使用DPM-Solver仅需20步即可生成高质量
+    样本，即使仅需10步也能生成相当好的样本。
 
-    For more details, see the original paper: https://arxiv.org/abs/2206.00927 and https://arxiv.org/abs/2211.01095
+    有关更多详细信息，请参见原始论文: https://arxiv.org/abs/2206.00927 和 https://arxiv.org/abs/2211.01095
 
-    Currently, we support the multistep DPM-Solver for both noise prediction models and data prediction models. We
-    recommend to use `solver_order=2` for guided sampling, and `solver_order=3` for unconditional sampling.
+    目前，我们支持噪声预测模型和数据预测模型的多步DPM-Solver。我们
+    建议在引导采样时使用`solver_order=2`，在无条件采样时使用`solver_order=3`。
 
-    We also support the "dynamic thresholding" method in Imagen (https://arxiv.org/abs/2205.11487). For pixel-space
-    diffusion models, you can set both `algorithm_type="dpmsolver++"` and `thresholding=True` to use the dynamic
-    thresholding. Note that the thresholding method is unsuitable for latent-space diffusion models (such as
-    stable-diffusion).
+    我们还支持Imagen中的"动态阈值"方法 (https://arxiv.org/abs/2205.11487)。对于像素空间
+    扩散模型，您可以同时设置`algorithm_type="dpmsolver++"`和`thresholding=True`来使用动态
+    阈值。请注意，阈值方法不适用于潜在空间扩散模型（如
+    stable-diffusion）。
 
-    We also support the SDE variant of DPM-Solver and DPM-Solver++, which is a fast SDE solver for the reverse
-    diffusion SDE. Currently we only support the first-order and second-order solvers. We recommend using the
-    second-order `sde-dpmsolver++`.
+    我们还支持DPM-Solver和DPM-Solver++的SDE变体，这是一种用于反向的快速SDE求解器
+    扩散SDE。目前我们只支持一阶和二阶求解器。我们建议使用
+    二阶`sde-dpmsolver++`。
 
-    [`~ConfigMixin`] takes care of storing all config attributes that are passed in the scheduler's `__init__`
-    function, such as `num_train_timesteps`. They can be accessed via `scheduler.config.num_train_timesteps`.
-    [`SchedulerMixin`] provides general loading and saving functionality via the [`SchedulerMixin.save_pretrained`] and
-    [`~SchedulerMixin.from_pretrained`] functions.
+    [`~ConfigMixin`] 负责存储所有通过调度器的[__init__](file://e:\AI\muse\MuseV-main\musev\schedulers\scheduling_dpmsolver_multistep.py#L150-L234)函数传递的配置属性
+    例如`num_train_timesteps`。可以通过`scheduler.config.num_train_timesteps`访问它们。
+    [`SchedulerMixin`] 通过 [`SchedulerMixin.save_pretrained`] 和
+    [`~SchedulerMixin.from_pretrained`] 函数提供常规的加载和保存功能。
 
-    Args:
-        num_train_timesteps (`int`): number of diffusion steps used to train the model.
-        beta_start (`float`): the starting `beta` value of inference.
-        beta_end (`float`): the final `beta` value.
+    参数:
+        num_train_timesteps (`int`): 用于训练模型的扩散步数。
+        beta_start (`float`): 推理的起始`beta`值。
+        beta_end (`float`): 最终的`beta`值。
         beta_schedule (`str`):
-            the beta schedule, a mapping from a beta range to a sequence of betas for stepping the model. Choose from
-            `linear`, `scaled_linear`, or `squaredcos_cap_v2`.
-        trained_betas (`np.ndarray`, optional):
-            option to pass an array of betas directly to the constructor to bypass `beta_start`, `beta_end` etc.
-        solver_order (`int`, default `2`):
-            the order of DPM-Solver; can be `1` or `2` or `3`. We recommend to use `solver_order=2` for guided
-            sampling, and `solver_order=3` for unconditional sampling.
-        prediction_type (`str`, default `epsilon`, optional):
-            prediction type of the scheduler function, one of `epsilon` (predicting the noise of the diffusion
-            process), `sample` (directly predicting the noisy sample`) or `v_prediction` (see section 2.4
-            https://imagen.research.google/video/paper.pdf)
-        thresholding (`bool`, default `False`):
-            whether to use the "dynamic thresholding" method (introduced by Imagen, https://arxiv.org/abs/2205.11487).
-            For pixel-space diffusion models, you can set both `algorithm_type=dpmsolver++` and `thresholding=True` to
-            use the dynamic thresholding. Note that the thresholding method is unsuitable for latent-space diffusion
-            models (such as stable-diffusion).
-        dynamic_thresholding_ratio (`float`, default `0.995`):
-            the ratio for the dynamic thresholding method. Default is `0.995`, the same as Imagen
-            (https://arxiv.org/abs/2205.11487).
-        sample_max_value (`float`, default `1.0`):
-            the threshold value for dynamic thresholding. Valid only when `thresholding=True` and
-            `algorithm_type="dpmsolver++`.
-        algorithm_type (`str`, default `dpmsolver++`):
-            the algorithm type for the solver. Either `dpmsolver` or `dpmsolver++` or `sde-dpmsolver` or
-            `sde-dpmsolver++`. The `dpmsolver` type implements the algorithms in https://arxiv.org/abs/2206.00927, and
-            the `dpmsolver++` type implements the algorithms in https://arxiv.org/abs/2211.01095. We recommend to use
-            `dpmsolver++` or `sde-dpmsolver++` with `solver_order=2` for guided sampling (e.g. stable-diffusion).
-        solver_type (`str`, default `midpoint`):
-            the solver type for the second-order solver. Either `midpoint` or `heun`. The solver type slightly affects
-            the sample quality, especially for small number of steps. We empirically find that `midpoint` solvers are
-            slightly better, so we recommend to use the `midpoint` type.
-        lower_order_final (`bool`, default `True`):
-            whether to use lower-order solvers in the final steps. Only valid for < 15 inference steps. We empirically
-            find this trick can stabilize the sampling of DPM-Solver for steps < 15, especially for steps <= 10.
-        use_karras_sigmas (`bool`, *optional*, defaults to `False`):
-             This parameter controls whether to use Karras sigmas (Karras et al. (2022) scheme) for step sizes in the
-             noise schedule during the sampling process. If True, the sigmas will be determined according to a sequence
-             of noise levels {σi} as defined in Equation (5) of the paper https://arxiv.org/pdf/2206.00364.pdf.
-        lambda_min_clipped (`float`, default `-inf`):
-            the clipping threshold for the minimum value of lambda(t) for numerical stability. This is critical for
-            cosine (squaredcos_cap_v2) noise schedule.
-        variance_type (`str`, *optional*):
-            Set to "learned" or "learned_range" for diffusion models that predict variance. For example, OpenAI's
-            guided-diffusion (https://github.com/openai/guided-diffusion) predicts both mean and variance of the
-            Gaussian distribution in the model's output. DPM-Solver only needs the "mean" output because it is based on
-            diffusion ODEs. whether the model's output contains the predicted Gaussian variance. For example, OpenAI's
-            guided-diffusion (https://github.com/openai/guided-diffusion) predicts both mean and variance of the
-            Gaussian distribution in the model's output. DPM-Solver only needs the "mean" output because it is based on
-            diffusion ODEs.
+            beta调度，是从beta范围到用于步进模型的beta序列的映射。可选
+            `linear`, `scaled_linear`, 或 `squaredcos_cap_v2`。
+        trained_betas (`np.ndarray`, 可选):
+            直接将beta数组传递给构造函数以绕过`beta_start`, `beta_end`等的选项。
+        solver_order (`int`, 默认 `2`):
+            DPM-Solver的阶数；可以是`1`或`2`或`3`。我们建议在引导
+            采样时使用`solver_order=2`，在无条件采样时使用`solver_order=3`。
+        prediction_type (`str`, 默认 `epsilon`, 可选):
+            调度器函数的预测类型，`epsilon`之一（预测扩散的噪声
+            过程），`sample`（直接预测噪声样本`）或`v_prediction`（参见第2.4节
+            https://imagen.research.google/video/paper.pdf）
+        thresholding (`bool`, 默认 `False`):
+            是否使用"动态阈值"方法（由Imagen引入，https://arxiv.org/abs/2205.11487）。
+            对于像素空间扩散模型，您可以同时设置`algorithm_type=dpmsolver++`和`thresholding=True`来
+            使用动态阈值。请注意，阈值方法不适用于潜在空间扩散
+            模型（如stable-diffusion）。
+        dynamic_thresholding_ratio (`float`, 默认 `0.995`):
+            动态阈值方法的比率。默认为`0.995`，与Imagen相同
+            （https://arxiv.org/abs/2205.11487）。
+        sample_max_value (`float`, 默认 `1.0`):
+            动态阈值的阈值。仅在`thresholding=True`和
+            `algorithm_type="dpmsolver++`时有效。
+        algorithm_type (`str`, 默认 `dpmsolver++`):
+            求解器的算法类型。`dpmsolver`或`dpmsolver++`或`sde-dpmsolver`或
+            `sde-dpmsolver++`。`dpmsolver`类型实现了https://arxiv.org/abs/2206.00927中的算法，而
+            `dpmsolver++`类型实现了https://arxiv.org/abs/2211.01095中的算法。我们建议使用
+            `dpmsolver++`或`sde-dpmsolver++`与`solver_order=2`进行引导采样（例如stable-diffusion）。
+        solver_type (`str`, 默认 `midpoint`):
+            二阶求解器的求解器类型。`midpoint`或`heun`。求解器类型稍有影响
+            样本质量，特别是对于少量步骤。我们通过经验发现`midpoint`求解器是
+            稍好一些，所以我们建议使用`midpoint`类型。
+        lower_order_final (`bool`, 默认 `True`):
+            是否在最后几步中使用低阶求解器。仅对< 15个推理步骤有效。我们通过经验
+            发现这个技巧可以稳定DPM-Solver的采样，对于步骤< 15，特别是步骤<= 10。
+        use_karras_sigmas (`bool`, *可选*, 默认为 `False`):
+             此参数控制在采样过程中是否使用Karras sigmas（Karras等（2022）方案）来设置噪声调度中的步长大小。
+             如果为True，sigma将根据论文https://arxiv.org/pdf/2206.00364.pdf的方程（5）中定义的噪声水平序列{σi}确定。
+        lambda_min_clipped (`float`, 默认 `-inf`):
+            数值稳定性所需的lambda(t)最小值的裁剪阈值。这对于
+            余弦（squaredcos_cap_v2）噪声调度至关重要。
+        variance_type (`str`, *可选*):
+            设置为"learned"或"learned_range"用于预测方差的扩散模型。例如，OpenAI的
+            guided-diffusion（https://github.com/openai/guided-diffusion）预测模型输出中高斯分布的均值和方差。
+            DPM-Solver只需要"mean"输出，因为它是基于
+            扩散ODEs。模型的输出是否包含预测的高斯方差。例如，OpenAI的
+            guided-diffusion（https://github.com/openai/guided-diffusion）预测模型输出中高斯分布的均值和方差。
+            DPM-Solver只需要"mean"输出，因为它是基于
+            扩散ODEs。
     """
 
     _compatibles = [e.name for e in KarrasDiffusionSchedulers]
@@ -167,14 +169,41 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         lambda_min_clipped: float = -float("inf"),
         variance_type: Optional[str] = None,
     ):
+        """
+        初始化DPM-Solver多步调度器
+        
+        参数:
+            num_train_timesteps (`int`): 训练时使用的扩散步骤数
+            beta_start (`float`): beta起始值
+            beta_end (`float`): beta结束值
+            beta_schedule (`str`): beta调度类型
+            trained_betas (`Optional[Union[np.ndarray, List[float]]]`): 预训练的betas
+            solver_order (`int`): 求解器阶数
+            prediction_type (`str`): 预测类型
+            thresholding (`bool`): 是否使用阈值处理
+            dynamic_thresholding_ratio (`float`): 动态阈值比率
+            sample_max_value (`float`): 样本最大值
+            algorithm_type (`str`): 算法类型
+            solver_type (`str`): 求解器类型
+            lower_order_final (`bool`): 是否在最后几步使用低阶求解器
+            use_karras_sigmas (`Optional[bool]`): 是否使用Karras sigmas
+            lambda_min_clipped (`float`): lambda最小裁剪值
+            variance_type (`Optional[str]`): 方差类型
+        """
+        logger.info(f"初始化DPMSolverMultistepScheduler，训练步数: {num_train_timesteps}")
+        
+        # 根据配置设置betas
         if trained_betas is not None:
+            logger.debug("使用预训练的betas")
             self.betas = torch.tensor(trained_betas, dtype=torch.float32)
         elif beta_schedule == "linear":
+            logger.debug("使用线性beta调度")
             self.betas = torch.linspace(
                 beta_start, beta_end, num_train_timesteps, dtype=torch.float32
             )
         elif beta_schedule == "scaled_linear":
-            # this schedule is very specific to the latent diffusion model.
+            # 这个调度对潜在扩散模型非常特殊
+            logger.debug("使用缩放线性beta调度")
             self.betas = (
                 torch.linspace(
                     beta_start**0.5,
@@ -185,24 +214,26 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
                 ** 2
             )
         elif beta_schedule == "squaredcos_cap_v2":
-            # Glide cosine schedule
+            # Glide余弦调度
+            logger.debug("使用Glide余弦调度")
             self.betas = betas_for_alpha_bar(num_train_timesteps)
         else:
             raise NotImplementedError(
                 f"{beta_schedule} does is not implemented for {self.__class__}"
             )
 
+        # 计算alphas和累积乘积
         self.alphas = 1.0 - self.betas
         self.alphas_cumprod = torch.cumprod(self.alphas, dim=0)
-        # Currently we only support VP-type noise schedule
+        # 目前我们只支持VP类型的噪声调度
         self.alpha_t = torch.sqrt(self.alphas_cumprod)
         self.sigma_t = torch.sqrt(1 - self.alphas_cumprod)
         self.lambda_t = torch.log(self.alpha_t) - torch.log(self.sigma_t)
 
-        # standard deviation of the initial noise distribution
+        # 初始噪声分布的标准差
         self.init_noise_sigma = 1.0
 
-        # settings for DPM-Solver
+        # DPM-Solver的设置
         if algorithm_type not in [
             "dpmsolver",
             "dpmsolver++",
@@ -210,6 +241,7 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
             "sde-dpmsolver++",
         ]:
             if algorithm_type == "deis":
+                logger.warning("算法类型'deis'已弃用，使用'dpmsolver++'")
                 self.register_to_config(algorithm_type="dpmsolver++")
             else:
                 raise NotImplementedError(
@@ -218,13 +250,14 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
 
         if solver_type not in ["midpoint", "heun"]:
             if solver_type in ["logrho", "bh1", "bh2"]:
+                logger.warning(f"求解器类型'{solver_type}'不受支持，使用'midpoint'")
                 self.register_to_config(solver_type="midpoint")
             else:
                 raise NotImplementedError(
                     f"{solver_type} does is not implemented for {self.__class__}"
                 )
 
-        # setable values
+        # 可设置的值
         self.num_inference_steps = None
         timesteps = np.linspace(
             0, num_train_timesteps - 1, num_train_timesteps, dtype=np.float32
@@ -233,21 +266,25 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         self.model_outputs = [None] * solver_order
         self.lower_order_nums = 0
         self.use_karras_sigmas = use_karras_sigmas
+        
+        logger.info(f"调度器初始化完成，算法类型: {algorithm_type}, 求解器阶数: {solver_order}")
 
     def set_timesteps(
         self, num_inference_steps: int = None, device: Union[str, torch.device] = None
     ):
         """
-        Sets the timesteps used for the diffusion chain. Supporting function to be run before inference.
+        设置用于扩散链的时间步。在推理前运行的支持函数。
 
-        Args:
+        参数:
             num_inference_steps (`int`):
-                the number of diffusion steps used when generating samples with a pre-trained model.
-            device (`str` or `torch.device`, optional):
-                the device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
+                使用预训练模型生成样本时使用的扩散步数。
+            device (`str` or `torch.device`, 可选):
+                应该将时间步移动到的设备。如果为`None`，则不移动时间步。
         """
-        # Clipping the minimum of all lambda(t) for numerical stability.
-        # This is critical for cosine (squaredcos_cap_v2) noise schedule.
+        logger.info(f"设置时间步，推理步数: {num_inference_steps}")
+        
+        # 为了数值稳定性裁剪所有lambda(t)的最小值。
+        # 这对余弦（squaredcos_cap_v2）噪声调度至关重要。
         clipped_idx = torch.searchsorted(
             torch.flip(self.lambda_t, [0]), self.config.lambda_min_clipped
         )
@@ -263,6 +300,7 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         )
 
         if self.use_karras_sigmas:
+            logger.debug("使用Karras sigmas")
             sigmas = np.array(((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5)
             log_sigmas = np.log(sigmas)
             sigmas = self._convert_to_karras(
@@ -273,8 +311,8 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
             ).round()
             timesteps = np.flip(timesteps).copy().astype(np.int64)
 
-        # when num_inference_steps == num_train_timesteps, we can end up with
-        # duplicates in timesteps.
+        # 当num_inference_steps == num_train_timesteps时，我们最终可能会有
+        # 时间步中的重复项。
         _, unique_indices = np.unique(timesteps, return_index=True)
         timesteps = timesteps[np.sort(unique_indices)]
 
@@ -286,40 +324,43 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
             None,
         ] * self.config.solver_order
         self.lower_order_nums = 0
+        
+        logger.debug(f"时间步设置完成，实际步数: {len(timesteps)}")
 
     # Copied from diffusers.schedulers.scheduling_ddpm.DDPMScheduler._threshold_sample
     def _threshold_sample(self, sample: torch.FloatTensor) -> torch.FloatTensor:
         """
-        "Dynamic thresholding: At each sampling step we set s to a certain percentile absolute pixel value in xt0 (the
-        prediction of x_0 at timestep t), and if s > 1, then we threshold xt0 to the range [-s, s] and then divide by
-        s. Dynamic thresholding pushes saturated pixels (those near -1 and 1) inwards, thereby actively preventing
-        pixels from saturation at each step. We find that dynamic thresholding results in significantly better
-        photorealism as well as better image-text alignment, especially when using very large guidance weights."
+        "动态阈值：在每个采样步骤中，我们将s设置为xt0中的某个百分位绝对像素值（在时间步t处对x_0的预测），
+        如果s > 1，则将xt0阈值化到范围[-s, s]，然后除以s。动态阈值将饱和像素（接近-1和1的像素）
+        向内推，从而主动防止像素在每个步骤中饱和。我们发现动态阈值显著改善了
+        照片真实感以及图像-文本对齐，特别是在使用非常大的引导权重时。"
 
         https://arxiv.org/abs/2205.11487
         """
+        logger.debug("应用动态阈值处理")
+        
         dtype = sample.dtype
         batch_size, channels, height, width = sample.shape
 
         if dtype not in (torch.float32, torch.float64):
             sample = (
                 sample.float()
-            )  # upcast for quantile calculation, and clamp not implemented for cpu half
+            )  # 为分位数计算升级，以及cpu half不实现clamp
 
-        # Flatten sample for doing quantile calculation along each image
+        # 展平样本以沿每个图像进行分位数计算
         sample = sample.reshape(batch_size, channels * height * width)
 
-        abs_sample = sample.abs()  # "a certain percentile absolute pixel value"
+        abs_sample = sample.abs()  # "某个百分位绝对像素值"
 
         s = torch.quantile(abs_sample, self.config.dynamic_thresholding_ratio, dim=1)
         s = torch.clamp(
             s, min=1, max=self.config.sample_max_value
-        )  # When clamped to min=1, equivalent to standard clipping to [-1, 1]
+        )  # 当裁剪到min=1时，等效于标准的[-1, 1]裁剪
 
-        s = s.unsqueeze(1)  # (batch_size, 1) because clamp will broadcast along dim=0
+        s = s.unsqueeze(1)  # (batch_size, 1) 因为clamp将沿dim=0广播
         sample = (
             torch.clamp(sample, -s, s) / s
-        )  # "we threshold xt0 to the range [-s, s] and then divide by s"
+        )  # "我们将xt0阈值化到范围[-s, s]，然后除以s"
 
         sample = sample.reshape(batch_size, channels, height, width)
         sample = sample.to(dtype)
@@ -328,13 +369,25 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
 
     # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._sigma_to_t
     def _sigma_to_t(self, sigma, log_sigmas):
-        # get log sigma
+        """
+        将sigma转换为时间步
+        
+        参数:
+            sigma: sigma值
+            log_sigmas: 对数sigmas
+            
+        返回:
+            转换后的时间步
+        """
+        logger.debug("将sigma转换为时间步")
+        
+        # 获取对数sigma
         log_sigma = np.log(sigma)
 
-        # get distribution
+        # 获取分布
         dists = log_sigma - log_sigmas[:, np.newaxis]
 
-        # get sigmas range
+        # 获取sigmas范围
         low_idx = (
             np.cumsum((dists >= 0), axis=0)
             .argmax(axis=0)
@@ -345,11 +398,11 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         low = log_sigmas[low_idx]
         high = log_sigmas[high_idx]
 
-        # interpolate sigmas
+        # 插值sigmas
         w = (low - log_sigma) / (low - high)
         w = np.clip(w, 0, 1)
 
-        # transform interpolation to time range
+        # 将插值转换为时间范围
         t = (1 - w) * low_idx + w * high_idx
         t = t.reshape(sigma.shape)
         return t
@@ -358,12 +411,13 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
     def _convert_to_karras(
         self, in_sigmas: torch.FloatTensor, num_inference_steps
     ) -> torch.FloatTensor:
-        """Constructs the noise schedule of Karras et al. (2022)."""
+        """构建Karras等（2022）的噪声调度。"""
+        logger.debug("转换为Karras噪声调度")
 
         sigma_min: float = in_sigmas[-1].item()
         sigma_max: float = in_sigmas[0].item()
 
-        rho = 7.0  # 7.0 is the value used in the paper
+        rho = 7.0  # 7.0是论文中使用的值
         ramp = np.linspace(0, 1, num_inference_steps)
         min_inv_rho = sigma_min ** (1 / rho)
         max_inv_rho = sigma_max ** (1 / rho)
@@ -374,29 +428,30 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         self, model_output: torch.FloatTensor, timestep: int, sample: torch.FloatTensor
     ) -> torch.FloatTensor:
         """
-        Convert the model output to the corresponding type that the algorithm (DPM-Solver / DPM-Solver++) needs.
+        将模型输出转换为算法（DPM-Solver / DPM-Solver++）所需的相应类型。
 
-        DPM-Solver is designed to discretize an integral of the noise prediction model, and DPM-Solver++ is designed to
-        discretize an integral of the data prediction model. So we need to first convert the model output to the
-        corresponding type to match the algorithm.
+        DPM-Solver设计用于离散化噪声预测模型的积分，而DPM-Solver++设计用于
+        离散化数据预测模型的积分。因此，我们需要首先将模型输出转换为
+        相应的类型以匹配算法。
 
-        Note that the algorithm type and the model type is decoupled. That is to say, we can use either DPM-Solver or
-        DPM-Solver++ for both noise prediction model and data prediction model.
+        注意算法类型和模型类型是解耦的。也就是说，我们可以对噪声预测模型和数据预测模型都使用DPM-Solver或
+        DPM-Solver++。
 
-        Args:
-            model_output (`torch.FloatTensor`): direct output from learned diffusion model.
-            timestep (`int`): current discrete timestep in the diffusion chain.
+        参数:
+            model_output (`torch.FloatTensor`): 来自学习扩散模型的直接输出。
+            timestep (`int`): 扩散链中的当前离散时间步。
             sample (`torch.FloatTensor`):
-                current instance of sample being created by diffusion process.
+                扩散过程当前正在创建的样本实例。
 
-        Returns:
-            `torch.FloatTensor`: the converted model output.
+        返回:
+            `torch.FloatTensor`: 转换后的模型输出。
         """
+        logger.debug(f"转换模型输出，时间步: {timestep}")
 
-        # DPM-Solver++ needs to solve an integral of the data prediction model.
+        # DPM-Solver++需要求解数据预测模型的积分。
         if self.config.algorithm_type in ["dpmsolver++", "sde-dpmsolver++"]:
             if self.config.prediction_type == "epsilon":
-                # DPM-Solver and DPM-Solver++ only need the "mean" output.
+                # DPM-Solver和DPM-Solver++只需要"mean"输出。
                 if self.config.variance_type in ["learned", "learned_range"]:
                     model_output = model_output[:, :3]
                 alpha_t, sigma_t = self.alpha_t[timestep], self.sigma_t[timestep]
@@ -413,14 +468,15 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
                 )
 
             if self.config.thresholding:
+                logger.debug("应用阈值处理")
                 x0_pred = self._threshold_sample(x0_pred)
 
             return x0_pred
 
-        # DPM-Solver needs to solve an integral of the noise prediction model.
+        # DPM-Solver需要求解噪声预测模型的积分。
         elif self.config.algorithm_type in ["dpmsolver", "sde-dpmsolver"]:
             if self.config.prediction_type == "epsilon":
-                # DPM-Solver and DPM-Solver++ only need the "mean" output.
+                # DPM-Solver和DPM-Solver++只需要"mean"输出。
                 if self.config.variance_type in ["learned", "learned_range"]:
                     epsilon = model_output[:, :3]
                 else:
@@ -438,6 +494,7 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
                 )
 
             if self.config.thresholding:
+                logger.debug("应用阈值处理")
                 alpha_t, sigma_t = self.alpha_t[timestep], self.sigma_t[timestep]
                 x0_pred = (sample - sigma_t * epsilon) / alpha_t
                 x0_pred = self._threshold_sample(x0_pred)
@@ -454,24 +511,27 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         noise: Optional[torch.FloatTensor] = None,
     ) -> torch.FloatTensor:
         """
-        One step for the first-order DPM-Solver (equivalent to DDIM).
+        一阶DPM-Solver的一次迭代（等效于DDIM）。
 
-        See https://arxiv.org/abs/2206.00927 for the detailed derivation.
+        详见 https://arxiv.org/abs/2206.00927 的详细推导。
 
-        Args:
-            model_output (`torch.FloatTensor`): direct output from learned diffusion model.
-            timestep (`int`): current discrete timestep in the diffusion chain.
-            prev_timestep (`int`): previous discrete timestep in the diffusion chain.
+        参数:
+            model_output (`torch.FloatTensor`): 来自学习扩散模型的直接输出。
+            timestep (`int`): 扩散链中的当前离散时间步。
+            prev_timestep (`int`): 扩散链中的前一个离散时间步。
             sample (`torch.FloatTensor`):
-                current instance of sample being created by diffusion process.
+                扩散过程当前正在创建的样本实例。
 
-        Returns:
-            `torch.FloatTensor`: the sample tensor at the previous timestep.
+        返回:
+            `torch.FloatTensor`: 前一个时间步的样本张量。
         """
+        logger.debug(f"执行一阶DPM-Solver更新，时间步: {timestep} -> {prev_timestep}")
+        
         lambda_t, lambda_s = self.lambda_t[prev_timestep], self.lambda_t[timestep]
         alpha_t, alpha_s = self.alpha_t[prev_timestep], self.alpha_t[timestep]
         sigma_t, sigma_s = self.sigma_t[prev_timestep], self.sigma_t[timestep]
         h = lambda_t - lambda_s
+        
         if self.config.algorithm_type == "dpmsolver++":
             x_t = (sigma_t / sigma_s) * sample - (
                 alpha_t * (torch.exp(-h) - 1.0)
@@ -505,19 +565,21 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         noise: Optional[torch.FloatTensor] = None,
     ) -> torch.FloatTensor:
         """
-        One step for the second-order multistep DPM-Solver.
+        二阶多步DPM-Solver的一次迭代。
 
-        Args:
+        参数:
             model_output_list (`List[torch.FloatTensor]`):
-                direct outputs from learned diffusion model at current and latter timesteps.
-            timestep (`int`): current and latter discrete timestep in the diffusion chain.
-            prev_timestep (`int`): previous discrete timestep in the diffusion chain.
+                当前和后续时间步来自学习扩散模型的直接输出。
+            timestep (`int`): 扩散链中的当前和后续离散时间步。
+            prev_timestep (`int`): 扩散链中的前一个离散时间步。
             sample (`torch.FloatTensor`):
-                current instance of sample being created by diffusion process.
+                扩散过程当前正在创建的样本实例。
 
-        Returns:
-            `torch.FloatTensor`: the sample tensor at the previous timestep.
+        返回:
+            `torch.FloatTensor`: 前一个时间步的样本张量。
         """
+        logger.debug(f"执行二阶多步DPM-Solver更新，前一个时间步: {prev_timestep}")
+        
         t, s0, s1 = prev_timestep, timestep_list[-1], timestep_list[-2]
         m0, m1 = model_output_list[-1], model_output_list[-2]
         lambda_t, lambda_s0, lambda_s1 = (
@@ -530,8 +592,9 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         h, h_0 = lambda_t - lambda_s0, lambda_s0 - lambda_s1
         r0 = h_0 / h
         D0, D1 = m0, (1.0 / r0) * (m0 - m1)
+        
         if self.config.algorithm_type == "dpmsolver++":
-            # See https://arxiv.org/abs/2211.01095 for detailed derivations
+            # 详见 https://arxiv.org/abs/2211.01095 的详细推导
             if self.config.solver_type == "midpoint":
                 x_t = (
                     (sigma_t / sigma_s0) * sample
@@ -545,7 +608,7 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
                     + (alpha_t * ((torch.exp(-h) - 1.0) / h + 1.0)) * D1
                 )
         elif self.config.algorithm_type == "dpmsolver":
-            # See https://arxiv.org/abs/2206.00927 for detailed derivations
+            # 详见 https://arxiv.org/abs/2206.00927 的详细推导
             if self.config.solver_type == "midpoint":
                 x_t = (
                     (alpha_t / alpha_s0) * sample
@@ -600,19 +663,21 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         sample: torch.FloatTensor,
     ) -> torch.FloatTensor:
         """
-        One step for the third-order multistep DPM-Solver.
+        三阶多步DPM-Solver的一次迭代。
 
-        Args:
+        参数:
             model_output_list (`List[torch.FloatTensor]`):
-                direct outputs from learned diffusion model at current and latter timesteps.
-            timestep (`int`): current and latter discrete timestep in the diffusion chain.
-            prev_timestep (`int`): previous discrete timestep in the diffusion chain.
+                当前和后续时间步来自学习扩散模型的直接输出。
+            timestep (`int`): 扩散链中的当前和后续离散时间步。
+            prev_timestep (`int`): 扩散链中的前一个离散时间步。
             sample (`torch.FloatTensor`):
-                current instance of sample being created by diffusion process.
+                扩散过程当前正在创建的样本实例。
 
-        Returns:
-            `torch.FloatTensor`: the sample tensor at the previous timestep.
+        返回:
+            `torch.FloatTensor`: 前一个时间步的样本张量。
         """
+        logger.debug(f"执行三阶多步DPM-Solver更新，前一个时间步: {prev_timestep}")
+        
         t, s0, s1, s2 = (
             prev_timestep,
             timestep_list[-1],
@@ -634,8 +699,9 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         D1_0, D1_1 = (1.0 / r0) * (m0 - m1), (1.0 / r1) * (m1 - m2)
         D1 = D1_0 + (r0 / (r0 + r1)) * (D1_0 - D1_1)
         D2 = (1.0 / (r0 + r1)) * (D1_0 - D1_1)
+        
         if self.config.algorithm_type == "dpmsolver++":
-            # See https://arxiv.org/abs/2206.00927 for detailed derivations
+            # 详见 https://arxiv.org/abs/2206.00927 的详细推导
             x_t = (
                 (sigma_t / sigma_s0) * sample
                 - (alpha_t * (torch.exp(-h) - 1.0)) * D0
@@ -643,7 +709,7 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
                 - (alpha_t * ((torch.exp(-h) - 1.0 + h) / h**2 - 0.5)) * D2
             )
         elif self.config.algorithm_type == "dpmsolver":
-            # See https://arxiv.org/abs/2206.00927 for detailed derivations
+            # 详见 https://arxiv.org/abs/2206.00927 的详细推导
             x_t = (
                 (alpha_t / alpha_s0) * sample
                 - (sigma_t * (torch.exp(h) - 1.0)) * D0
@@ -662,20 +728,22 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         w_ind_noise: float = 0.5,
     ) -> Union[SchedulerOutput, Tuple]:
         """
-        Step function propagating the sample with the multistep DPM-Solver.
+        步进函数，使用多步DPM-Solver传播样本。
 
-        Args:
-            model_output (`torch.FloatTensor`): direct output from learned diffusion model.
-            timestep (`int`): current discrete timestep in the diffusion chain.
+        参数:
+            model_output (`torch.FloatTensor`): 来自学习扩散模型的直接输出。
+            timestep (`int`): 扩散链中的当前离散时间步。
             sample (`torch.FloatTensor`):
-                current instance of sample being created by diffusion process.
-            return_dict (`bool`): option for returning tuple rather than SchedulerOutput class
+                扩散过程当前正在创建的样本实例。
+            return_dict (`bool`): 返回元组而不是SchedulerOutput类的选项
 
-        Returns:
-            [`~scheduling_utils.SchedulerOutput`] or `tuple`: [`~scheduling_utils.SchedulerOutput`] if `return_dict` is
-            True, otherwise a `tuple`. When returning a tuple, the first element is the sample tensor.
+        返回:
+            [`~scheduling_utils.SchedulerOutput`] 或 `tuple`: 如果`return_dict`为
+            True则为[`~scheduling_utils.SchedulerOutput`]，否则为`tuple`。返回元组时，第一个元素是样本张量。
 
         """
+        logger.debug(f"执行调度器步进，当前时间步: {timestep}")
+        
         if self.num_inference_steps is None:
             raise ValueError(
                 "Number of inference steps is 'None', you need to run 'set_timesteps' after creating the scheduler"
@@ -710,6 +778,7 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         self.model_outputs[-1] = model_output
 
         if self.config.algorithm_type in ["sde-dpmsolver", "sde-dpmsolver++"]:
+            logger.debug("生成噪声用于SDE算法")
             #             noise = randn_tensor(
             #                 model_output.shape, generator=generator, device=model_output.device, dtype=model_output.dtype
             #             )
@@ -718,7 +787,7 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
                 generator=generator,
                 device=model_output.device,
                 dtype=model_output.dtype,
-            )  # common noise
+            )  # 公共噪声
             ind_noise = randn_tensor(
                 model_output.shape,
                 generator=generator,
@@ -738,6 +807,7 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
             or self.lower_order_nums < 1
             or lower_order_final
         ):
+            logger.debug("使用一阶更新")
             prev_sample = self.dpm_solver_first_order_update(
                 model_output, timestep, prev_timestep, sample, noise=noise
             )
@@ -746,11 +816,13 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
             or self.lower_order_nums < 2
             or lower_order_second
         ):
+            logger.debug("使用二阶更新")
             timestep_list = [self.timesteps[step_index - 1], timestep]
             prev_sample = self.multistep_dpm_solver_second_order_update(
                 self.model_outputs, timestep_list, prev_timestep, sample, noise=noise
             )
         else:
+            logger.debug("使用三阶更新")
             timestep_list = [
                 self.timesteps[step_index - 2],
                 self.timesteps[step_index - 1],
@@ -764,23 +836,26 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
             self.lower_order_nums += 1
 
         if not return_dict:
+            logger.debug("返回元组格式结果")
             return (prev_sample,)
 
+        logger.debug("返回SchedulerOutput格式结果")
         return SchedulerOutput(prev_sample=prev_sample)
 
     def scale_model_input(
         self, sample: torch.FloatTensor, *args, **kwargs
     ) -> torch.FloatTensor:
         """
-        Ensures interchangeability with schedulers that need to scale the denoising model input depending on the
-        current timestep.
+        确保与需要根据
+        当前时间步缩放去噪模型输入的调度器的可互换性。
 
-        Args:
-            sample (`torch.FloatTensor`): input sample
+        参数:
+            sample (`torch.FloatTensor`): 输入样本
 
-        Returns:
-            `torch.FloatTensor`: scaled input sample
+        返回:
+            `torch.FloatTensor`: 缩放后的输入样本
         """
+        logger.debug("缩放模型输入")
         return sample
 
     # Copied from diffusers.schedulers.scheduling_ddpm.DDPMScheduler.add_noise
@@ -790,7 +865,20 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         noise: torch.FloatTensor,
         timesteps: torch.IntTensor,
     ) -> torch.FloatTensor:
-        # Make sure alphas_cumprod and timestep have same device and dtype as original_samples
+        """
+        向原始样本添加噪声
+        
+        参数:
+            original_samples: 原始样本
+            noise: 噪声
+            timesteps: 时间步
+            
+        返回:
+            添加噪声后的样本
+        """
+        logger.debug("向样本添加噪声")
+        
+        # 确保alphas_cumprod和timestep与original_samples具有相同的设备和数据类型
         alphas_cumprod = self.alphas_cumprod.to(
             device=original_samples.device, dtype=original_samples.dtype
         )

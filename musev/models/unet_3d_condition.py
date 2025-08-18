@@ -118,6 +118,7 @@ def hack_t2i_sd_layer_attn_with_ip(
     self_attn_class: BaseIPAttnProcessor = None,
     cross_attn_class: BaseIPAttnProcessor = None,
 ):
+    logger.info("开始执行 hack_t2i_sd_layer_attn_with_ip 函数")
     attn_procs = {}
     for name in unet.attn_processors.keys():
         if "temp_attentions" in name or "transformer_in" in name:
@@ -135,6 +136,7 @@ def hack_t2i_sd_layer_attn_with_ip(
                     f"hack attn_processor of {name} to {attn_procs[name].__class__.__name__}"
                 )
     unet.set_attn_processor(attn_procs, strict=False)
+    logger.info("完成执行 hack_t2i_sd_layer_attn_with_ip 函数")
 
 
 def convert_2D_to_3D(
@@ -147,8 +149,11 @@ def convert_2D_to_3D(
         "UpBlock2D",
     ),
 ):
+    logger.info("开始执行 convert_2D_to_3D 函数")
     if not isinstance(module_names, list):
-        return module_names.replace("2D", "3D")
+        result = module_names.replace("2D", "3D")
+        logger.info("完成执行 convert_2D_to_3D 函数")
+        return result
 
     return_modules = []
     for module_name in module_names:
@@ -156,11 +161,14 @@ def convert_2D_to_3D(
             return_modules.append(module_name.replace("2D", "3D"))
         else:
             return_modules.append(module_name)
+    logger.info("完成执行 convert_2D_to_3D 函数")
     return return_modules
 
 
 def insert_spatial_self_attn_idx(unet):
+    logger.info("开始执行 insert_spatial_self_attn_idx 函数")
     pass
+    logger.info("完成执行 insert_spatial_self_attn_idx 函数")
 
 
 @dataclass
@@ -295,6 +303,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             ValueError: _description_
             ValueError: _description_
         """
+        logger.info("开始初始化 UNet3DConditionModel")
         super(UNet3DConditionModel, self).__init__()
         self.keep_vision_condtion = keep_vision_condtion
         self.use_anivv1_cfg = use_anivv1_cfg
@@ -608,6 +617,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         # 会在 set_skip_temporal_layers 设置 skip_refer_downblock_emb
         # 当为 True 时，会跳过 referencenet_block_emb的影响，主要用于首帧生成
         self.skip_refer_downblock_emb = False
+        logger.info("完成初始化 UNet3DConditionModel")
 
     @property
     # Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel.attn_processors
@@ -617,6 +627,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             `dict` of attention processors: A dictionary containing all attention processors used in the model with
             indexed by its weight name.
         """
+        logger.info("开始执行 attn_processors 属性获取")
         # set recursively
         processors = {}
 
@@ -636,6 +647,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         for name, module in self.named_children():
             fn_recursive_add_processors(name, module, processors)
 
+        logger.info("完成执行 attn_processors 属性获取")
         return processors
 
     # Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel.set_attention_slice
@@ -650,9 +662,10 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             slice_size (`str` or `int` or `list(int)`, *optional*, defaults to `"auto"`):
                 When `"auto"`, halves the input to the attention heads, so attention will be computed in two steps. If
                 `"max"`, maximum amount of memory will be saved by running only one slice at a time. If a number is
-                provided, uses as many slices as `attention_head_dim // slice_size`. In this case, `attention_head_dim`
+                provided, uses as many slices as `attention_head_dim // slice_size`. In this case, attention_head_dim
                 must be a multiple of `slice_size`.
         """
+        logger.info("开始执行 set_attention_slice 方法")
         sliceable_head_dims = []
 
         def fn_recursive_retrieve_sliceable_dims(module: torch.nn.Module):
@@ -709,6 +722,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         reversed_slice_size = list(reversed(slice_size))
         for module in self.children():
             fn_recursive_set_attention_slice(module, reversed_slice_size)
+        logger.info("完成执行 set_attention_slice 方法")
 
     # Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel.set_attn_processor
     def set_attn_processor(
@@ -724,6 +738,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             In case `processor` is a dict, the key needs to define the path to the corresponding cross attention processor. This is strongly recommended when setting trainable attention processors.:
 
         """
+        logger.info("开始执行 set_attn_processor 方法")
         count = len(self.attn_processors.keys())
 
         if isinstance(processor, dict) and len(processor) != count and strict:
@@ -756,19 +771,24 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
 
         for name, module in self.named_children():
             fn_recursive_attn_processor(name, module, processor)
+        logger.info("完成执行 set_attn_processor 方法")
 
     # Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel.set_default_attn_processor
     def set_default_attn_processor(self):
         """
         Disables custom attention processors and sets the default attention implementation.
         """
+        logger.info("开始执行 set_default_attn_processor 方法")
         self.set_attn_processor(AttnProcessor())
+        logger.info("完成执行 set_default_attn_processor 方法")
 
     def _set_gradient_checkpointing(self, module, value=False):
+        logger.info("开始执行 _set_gradient_checkpointing 方法")
         if isinstance(
             module, (CrossAttnDownBlock3D, DownBlock3D, CrossAttnUpBlock3D, UpBlock3D)
         ):
             module.gradient_checkpointing = value
+        logger.info("完成执行 _set_gradient_checkpointing 方法")
 
     def forward(
         self,
@@ -831,7 +851,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         Returns:
             Union[UNet3DConditionOutput, Tuple]: _description_
         """
-
+        logger.info("开始执行 forward 方法")
         if skip_temporal_layers is not None:
             self.set_skip_temporal_layers(skip_temporal_layers)
         # By default samples have to be AT least a multiple of the overall upsampling factor.
@@ -1275,8 +1295,10 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         if skip_temporal_layers is not None:
             self.set_skip_temporal_layers(not skip_temporal_layers)
         if not return_dict:
+            logger.info("完成执行 forward 方法")
             return (sample,)
         else:
+            logger.info("完成执行 forward 方法")
             return UNet3DConditionOutput(sample=sample)
 
     # from https://github.com/huggingface/diffusers/blob/v0.16.1/src/diffusers/models/modeling_utils.py#L328
@@ -1348,8 +1370,8 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 same device.
 
                 To have Accelerate compute the most optimized `device_map` automatically, set `device_map="auto"`. For
-                more information about each option see [designing a device
-                map](https://hf.co/docs/accelerate/main/en/usage_guides/big_modeling#designing-a-device-map).
+                more information about each option see designing a device
+                map.
             low_cpu_mem_usage (`bool`, *optional*, defaults to `True` if torch version >= 1.9.0 else `False`):
                 Speed up model loading by not initializing the weights and only loading the pre-trained weights. This
                 also tries to not use more than 1x model size in CPU memory (including peak memory) while loading the
@@ -1365,19 +1387,20 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
 
         <Tip>
 
-         It is required to be logged in (`huggingface-cli login`) when you want to use private or [gated
-         models](https://huggingface.co/docs/hub/models-gated#gated-models).
+         It is required to be logged in (`huggingface-cli login`) when you want to use private or gated
+         models.
 
         </Tip>
 
         <Tip>
 
-        Activate the special ["offline-mode"](https://huggingface.co/diffusers/installation.html#offline-mode) to use
+        Activate the special offline-mode to use
         this method in a firewalled environment.
 
         </Tip>
 
         """
+        logger.info("开始执行 from_pretrained_2d 类方法")
         cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
         ignore_mismatched_sizes = kwargs.pop("ignore_mismatched_sizes", False)
         force_download = kwargs.pop("force_download", False)
@@ -1632,8 +1655,10 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         # Set model in evaluation mode to deactivate DropOut modules by default
         model.eval()
         if output_loading_info:
+            logger.info("完成执行 from_pretrained_2d 类方法")
             return model, loading_info
 
+        logger.info("完成执行 from_pretrained_2d 类方法")
         return model
 
     def set_skip_temporal_layers(
@@ -1642,6 +1667,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
     ) -> None:  # turn 3Dunet to 2Dunet
         # Recursively walk through all the children.
         # Any children which exposes the skip_temporal_layers parameter gets the message
+        logger.info("开始执行 set_skip_temporal_layers 方法")
 
         # 推断时使用参数控制refer_image和ip_adapter_image来控制，不需要这里了
         # if hasattr(self, "skip_refer_downblock_emb"):
@@ -1659,8 +1685,10 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         for module in self.children():
             if isinstance(module, torch.nn.Module):
                 fn_recursive_set_mem_eff(module)
+        logger.info("完成执行 set_skip_temporal_layers 方法")
 
     def insert_spatial_self_attn_idx(self):
+        logger.info("开始执行 insert_spatial_self_attn_idx 方法")
         attns, basic_transformers = self.spatial_self_attns
         self.self_attn_num = len(attns)
         for i, (name, layer) in enumerate(attns):
@@ -1673,27 +1701,32 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 f"{self.__class__.__name__}, {i}, {name}, {layer.__class__.__name__}"
             )
             layer.spatial_self_attn_idx = i
+        logger.info("完成执行 insert_spatial_self_attn_idx 方法")
 
     @property
     def spatial_self_attns(
         self,
     ) -> List[Tuple[str, Attention]]:
+        logger.info("开始执行 spatial_self_attns 属性获取")
         attns, spatial_transformers = self.get_attns(
             include="attentions", exclude="temp_attentions", attn_name="attn1"
         )
         attns = sorted(attns)
         spatial_transformers = sorted(spatial_transformers)
+        logger.info("完成执行 spatial_self_attns 属性获取")
         return attns, spatial_transformers
 
     @property
     def spatial_cross_attns(
         self,
     ) -> List[Tuple[str, Attention]]:
+        logger.info("开始执行 spatial_cross_attns 属性获取")
         attns, spatial_transformers = self.get_attns(
             include="attentions", exclude="temp_attentions", attn_name="attn2"
         )
         attns = sorted(attns)
         spatial_transformers = sorted(spatial_transformers)
+        logger.info("完成执行 spatial_cross_attns 属性获取")
         return attns, spatial_transformers
 
     def get_attns(
@@ -1707,6 +1740,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             `dict` of attention attns: A dictionary containing all attention attns used in the model with
             indexed by its weight name.
         """
+        logger.info("开始执行 get_attns 方法")
         # set recursively
         attns = []
         spatial_transformers = []
@@ -1737,4 +1771,5 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         for name, module in self.named_children():
             fn_recursive_add_attns(name, module, attns, spatial_transformers)
 
+        logger.info("完成执行 get_attns 方法")
         return attns, spatial_transformers

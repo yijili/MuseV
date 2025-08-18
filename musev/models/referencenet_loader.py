@@ -50,22 +50,26 @@ def load_referencenet(
     subfolder: str = "unet",
 ):
     """
-    Loads the ReferenceNet model.
+    加载ReferenceNet模型。
 
     Args:
-        sd_referencenet_model (Tuple[str, nn.Module] or str): The pretrained ReferenceNet model or the path to the model.
-        sd_model (nn.Module, optional): The sd_model to update the ReferenceNet with. Defaults to None.
-        need_self_attn_block_embs (bool, optional): Whether to compute self-attention block embeddings. Defaults to False.
-        need_block_embs (bool, optional): Whether to compute block embeddings. Defaults to False.
-        dtype (torch.dtype, optional): The data type of the tensors. Defaults to torch.float16.
-        cross_attention_dim (int, optional): The dimension of the cross-attention. Defaults to 768.
-        subfolder (str, optional): The subfolder of the model. Defaults to "unet".
+        sd_referencenet_model (Tuple[str, nn.Module] or str): 预训练的ReferenceNet模型或模型路径。
+        sd_model (nn.Module, optional): 用于更新ReferenceNet的sd_model。默认为None。
+        need_self_attn_block_embs (bool, optional): 是否计算自注意力块嵌入。默认为False。
+        need_block_embs (bool, optional): 是否计算块嵌入。默认为False。
+        dtype (torch.dtype, optional): 张量的数据类型。默认为torch.float16。
+        cross_attention_dim (int, optional): 交叉注意力的维度。默认为768。
+        subfolder (str, optional): 模型的子文件夹。默认为"unet"。
 
     Returns:
-        nn.Module: The loaded ReferenceNet model.
+        nn.Module: 加载的ReferenceNet模型。
     """
+    logger.info(f"开始加载ReferenceNet模型: {sd_referencenet_model}")
+    logger.info(f"参数设置 - need_self_attn_block_embs: {need_self_attn_block_embs}, need_block_embs: {need_block_embs}")
+    logger.info(f"参数设置 - dtype: {dtype}, cross_attention_dim: {cross_attention_dim}, subfolder: {subfolder}")
 
     if isinstance(sd_referencenet_model, str):
+        logger.info(f"从路径加载预训练模型: {sd_referencenet_model}")
         referencenet = ReferenceNet2D.from_pretrained(
             sd_referencenet_model,
             subfolder=subfolder,
@@ -74,10 +78,18 @@ def load_referencenet(
             torch_dtype=dtype,
             cross_attention_dim=cross_attention_dim,
         )
+        logger.info("成功从预训练路径加载ReferenceNet模型")
     elif isinstance(sd_referencenet_model, nn.Module):
-        referencenet = sd_referencenet_model
+        logger.info("使用传入的模型实例作为ReferenceNet")
+        referencenet = sd_referencencenet_model
+        logger.info("成功使用传入模型实例")
+    
     if sd_model is not None:
+        logger.info("开始使用sd_model更新ReferenceNet")
         referencenet = update_unet_with_sd(referencenet, sd_model)
+        logger.info("成功使用sd_model更新ReferenceNet")
+    
+    logger.info("ReferenceNet模型加载完成")
     return referencenet
 
 
@@ -88,26 +100,30 @@ def load_referencenet_by_name(
     cross_attention_dim: int = 768,
     dtype: torch.dtype = torch.float16,
 ) -> nn.Module:
-    """通过模型名字 初始化 referencenet，载入预训练参数，
+    """通过模型名字初始化referencenet，载入预训练参数，
         如希望后续通过简单名字就可以使用预训练模型，需要在这里完成定义
         init referencenet with model_name.
         if you want to use pretrained model with simple name, you need to define it here.
     Args:
-        model_name (str): _description_
-        sd_unet_model (Tuple[str, nn.Module]): _description_
-        sd_model (Tuple[str, nn.Module]): _description_
-        cross_attention_dim (int, optional): _description_. Defaults to 768.
-        dtype (torch.dtype, optional): _description_. Defaults to torch.float16.
+        model_name (str): 模型名称
+        sd_unet_model (Tuple[str, nn.Module]): unet模型
+        sd_model (Tuple[str, nn.Module]): sd模型
+        cross_attention_dim (int, optional): 交叉注意力维度. 默认为 768.
+        dtype (torch.dtype, optional): 数据类型. 默认为 torch.float16.
 
     Raises:
-        ValueError: _description_
+        ValueError: 不支持的模型名称
 
     Returns:
-        nn.Module: _description_
+        nn.Module: ReferenceNet模型
     """
+    logger.info(f"通过模型名称加载ReferenceNet: {model_name}")
+    logger.info(f"参数设置 - cross_attention_dim: {cross_attention_dim}, dtype: {dtype}")
+    
     if model_name in [
         "musev_referencenet",
     ]:
+        logger.info(f"匹配到支持的模型: {model_name}")
         unet = load_referencenet(
             sd_referencenet_model=sd_referencenet_model,
             sd_model=sd_model,
@@ -117,7 +133,9 @@ def load_referencenet_by_name(
             need_block_embs=True,
             subfolder="referencenet",
         )
+        logger.info(f"成功加载模型 {model_name}")
     else:
+        logger.error(f"不支持的模型名称: {model_name}")
         raise ValueError(
             f"unsupport model_name={model_name}, only support ReferenceNet_V0_block13, ReferenceNet_V1_block13, ReferenceNet_V2_block13, ReferenceNet_V0_sefattn16"
         )
