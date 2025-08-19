@@ -397,5 +397,5 @@ class TransformerTemporalModel(ModelMixin, ConfigMixin):
             logger.info("前向传播完成，返回元组格式结果")
             return (output,)
 
-        logger.info("前向传播完成，返回TransformerTemporalModelOutput格式结果")
+        # logger.info("前向传播完成，返回TransformerTemporalModelOutput格式结果")
         return TransformerTemporalModelOutput(sample=output)
