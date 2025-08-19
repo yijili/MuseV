@@ -22,6 +22,7 @@ from diffusers.models.embeddings import get_2d_sincos_pos_embed_from_grid
 
 # 配置日志记录器
 logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.info)
 
 # ref diffusers.models.embeddings.get_2d_sincos_pos_embed
 def get_2d_sincos_pos_embed(

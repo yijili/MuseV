@@ -79,7 +79,7 @@ from . import Model_Register
 
 
 logger = logging.getLogger(__name__)
-
+logging.basicConfig(level=logging.info)
 
 @Model_Register.register
 class ReferenceNet2D(UNet2DConditionModel, nn.Module):

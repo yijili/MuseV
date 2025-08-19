@@ -34,6 +34,7 @@ from .attention_processor import ReferEmbFuseAttention
 
 
 logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.info)
 
 # 注：
 #   (1) 原代码的`use_linear_projection`默认值均为True，与2D-SD模型不符，load时报错。因此均改为False

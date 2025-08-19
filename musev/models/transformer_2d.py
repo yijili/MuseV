@@ -41,6 +41,7 @@ from diffusers.utils.constants import USE_PEFT_BACKEND
 from .attention import BasicTransformerBlock
 
 logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.info)
 
 # 本部分 与 diffusers/models/transformer_2d.py 几乎一样
 # 更新部分

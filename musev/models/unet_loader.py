@@ -37,7 +37,6 @@ from ..models.unet_3d_condition import UNet3DConditionModel
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
-
 def update_unet_with_sd(
     unet: nn.Module, sd_model: Tuple[str, nn.Module], subfolder: str = "unet"
 ):

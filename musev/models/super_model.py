@@ -18,7 +18,7 @@ from .referencenet import ReferenceNet2D
 from ip_adapter.ip_adapter import ImageProjModel
 
 logger = logging.getLogger(__name__)
-
+logging.basicConfig(level=logging.info)
 
 class SuperUNet3DConditionModel(nn.Module):
     """封装了各种子模型的超模型，与 diffusers 的 pipeline 很像，只不过这里是模型定义。

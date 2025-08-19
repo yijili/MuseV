@@ -6,7 +6,7 @@ import logging  # 导入日志模块，用于记录函数调用信息
 
 # 配置日志记录器
 logger = logging.getLogger(__name__)  # 创建一个以当前模块命名的日志记录器
-
+logging.basicConfig(level=logging.info)
 
 class TextEmbExtractor(nn.Module):
     """

@@ -39,7 +39,7 @@ from .attention_processor import IPAttention, BaseIPAttnProcessor
 
 
 logger = logging.getLogger(__name__)
-
+logging.basicConfig(level=logging.info)
 
 def not_use_xformers_anyway(
     use_memory_efficient_attention_xformers: bool,

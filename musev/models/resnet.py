@@ -31,6 +31,7 @@ from . import Model_Register
 
 # 设置日志记录器
 logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.info)
 
 @Model_Register.register
 class TemporalConvLayer(nn.Module):

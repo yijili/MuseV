@@ -48,7 +48,7 @@ from ..data.data_util import (
 from . import Model_Register
 
 logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
-
+logging.basicConfig(level=logging.info)
 
 @maybe_allow_in_graph
 class IPAttention(DiffusersAttention):

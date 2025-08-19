@@ -51,7 +51,7 @@ from . import Model_Register
 # 输入bs*n_frames*w*h太高，xformers报错。因此将transformer_temporal的allow_xformers均关掉
 # if bs*n_frames*w*h to large, xformers will raise error. So we close the allow_xformers in transformer_temporal
 logger = logging.getLogger(__name__)
-
+logging.basicConfig(level=logging.info)
 
 @Model_Register.register
 class TransformerTemporalModel(ModelMixin, ConfigMixin):

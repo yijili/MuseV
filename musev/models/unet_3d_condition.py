@@ -97,6 +97,7 @@ from .attention import BasicTransformerBlock
 
 
 logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
+logging.basicConfig(level=logging.info)
 
 # if is_torch_version(">=", "1.9.0"):
 #     _LOW_CPU_MEM_USAGE_DEFAULT = True

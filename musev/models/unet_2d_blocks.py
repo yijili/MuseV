@@ -19,7 +19,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from diffusers.utils import is_torch_version, logging
+from diffusers.utils import is_torch_version
 from diffusers.utils.torch_utils import apply_freeu
 from diffusers.models.activations import get_activation
 from diffusers.models.attention_processor import (
@@ -62,8 +62,8 @@ from diffusers.models.unet_2d_blocks import (
 from .transformer_2d import Transformer2DModel
 
 # 获取日志记录器实例
-logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
-
+logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
+logging.basicConfig(level=logging.info)
 
 def get_down_block(
     down_block_type: str,
